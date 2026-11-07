@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
     <script
-        src="https://www.paypal.com/sdk/js?client-id={{ client_id|urlencode }}&currency={{ currency }}&intent=capture">
+        src="https://www.paypal.com/sdk/js?client-id={{ client_id|urlencode }}&amp;currency={{ currency }}&amp;intent=capture">
     </script>
 
     <style>
@@ -18,15 +17,20 @@
             background: #0b1020;
             color: #fff;
             font-family: Arial, sans-serif;
+            min-height: 100vh;
         }
 
         .payment-wrapper {
             max-width: 520px;
-            margin: 65px auto;
-            padding: 35px;
+            width: calc(100% - 32px);
+            margin: 50px auto;
+            padding: 35px 25px;
             border-radius: 18px;
             background: #151a26;
             text-align: center;
+            box-sizing: border-box;
+            border: 1px solid #273449;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
         }
 
         .payment-icon {
@@ -35,9 +39,10 @@
         }
 
         .payment-amount {
-            font-size: 42px;
+            font-size: clamp(32px, 6vw, 42px);
             font-weight: bold;
             margin: 25px 0;
+            color: #4ade80;
         }
 
         .payment-details {
@@ -59,10 +64,12 @@
             color: #aab3c5;
             font-size: 12px;
             word-break: break-all;
+            margin: 15px 0;
         }
 
         #paypal-button-container {
             margin-top: 25px;
+            min-height: 45px;
         }
 
         #payment-message {
@@ -71,24 +78,28 @@
             padding: 15px;
             border-radius: 8px;
             line-height: 1.5;
+            font-size: 14px;
         }
 
         .success {
             display: block !important;
             background: #123d2b;
             color: #4ade80;
+            border: 1px solid #166534;
         }
 
         .error {
             display: block !important;
             background: #481d25;
             color: #fb7185;
+            border: 1px solid #9f1239;
         }
 
         .loading {
             display: block !important;
             background: #202f50;
             color: #93c5fd;
+            border: 1px solid #1e40af;
         }
 
         .back-link {
@@ -96,10 +107,19 @@
             margin-top: 25px;
             color: #aab3c5;
             text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s ease;
         }
 
         .back-link:hover {
             color: #fff;
+        }
+
+        @media (max-width: 480px) {
+            .payment-wrapper {
+                padding: 25px 16px;
+                margin: 25px auto;
+            }
         }
     </style>
 </head>
@@ -141,7 +161,10 @@
             Transaction ID: {{ transaction_id }}
         </p>
 
-        <div id="paypal-button-container"></div>
+        <div id="paypal-button-container"
+             data-transaction-id="{{ transaction_id }}"
+             data-success-url="{{ url_for('payment_success') }}">
+        </div>
 
         <div id="payment-message"></div>
 
@@ -151,154 +174,127 @@
 
     </div>
 
-
     <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const paypalContainer = document.getElementById("paypal-button-container");
+            const paymentMessage = document.getElementById("payment-message");
+            const paymentStatus = document.getElementById("payment-status");
 
-        const transactionId = {{ transaction_id|tojson }};
-
-        const paymentMessage = document.getElementById("payment-message");
-        const paymentStatus = document.getElementById("payment-status");
-        const paypalContainer = document.getElementById("paypal-button-container");
-
-
-        function showMessage(message, type) {
-
-            paymentMessage.textContent = message;
-            paymentMessage.className = type;
-
-        }
-
-
-        paypal.Buttons({
-
-            // Create PayPal order through Flask backend
-            createOrder: async function () {
-
-                try {
-
-                    showMessage("Creating secure payment order...", "loading");
-
-                    const response = await fetch("/create-paypal-order", {
-
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-
-                        body: JSON.stringify({
-                            transaction_id: transactionId
-                        })
-
-                    });
-
-                    const data = await response.json();
-
-                    if (!response.ok || !data.id) {
-                        throw new Error(data.error || "Unable to create payment order.");
-                    }
-
-                    paymentMessage.className = "";
-
-                    return data.id;
-
-                } catch (error) {
-
-                    showMessage(error.message, "error");
-
-                    throw error;
-
-                }
-
-            },
-
-
-            // Capture payment after buyer approval
-            onApprove: async function (data) {
-
-                try {
-
-                    showMessage("Verifying and processing your payment...", "loading");
-
-                    paymentStatus.textContent = "Processing";
-
-                    const response = await fetch("/capture-paypal-order", {
-
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            transaction_id: transactionId,
-
-                            orderID: data.orderID
-
-                        })
-
-                    });
-
-                    const result = await response.json();
-
-                    if (!response.ok || result.status !== "COMPLETED") {
-                        throw new Error(result.error || "Payment verification failed.");
-                    }
-
-                    paymentStatus.textContent = "Completed";
-
-                    showMessage(
-                        "Payment successful! Your transaction has been completed.",
-                        "success"
-                    );
-
-                    paypalContainer.style.display = "none";
-
-                    setTimeout(() => {
-
-                        window.location.href = "{{ url_for('payment_success') }}";
-
-                    }, 2500);
-
-                } catch (error) {
-
-                    paymentStatus.textContent = "Verification Failed";
-
-                    showMessage(error.message, "error");
-
-                }
-
-            },
-
-
-            // Buyer cancels payment
-            onCancel: function () {
-
-                paymentStatus.textContent = "Cancelled";
-
-                showMessage(
-                    "You cancelled the payment. No successful payment was recorded.",
-                    "error"
-                );
-
-            },
-
-
-            // PayPal SDK error
-            onError: function (error) {
-
-                console.error("PayPal error:", error);
-
-                showMessage(
-                    "Something went wrong with PayPal. Please try again.",
-                    "error"
-                );
-
+            if (!paypalContainer) {
+                return;
             }
 
-        }).render("#paypal-button-container");
+            const transactionId = paypalContainer.dataset.transactionId;
+            const successUrl = paypalContainer.dataset.successUrl || "/payment/success";
 
+            function showMessage(message, type) {
+                paymentMessage.textContent = message;
+                paymentMessage.className = type;
+            }
+
+            if (typeof paypal === "undefined") {
+                paymentStatus.textContent = "Unavailable";
+                showMessage(
+                    "Unable to load the PayPal checkout SDK. Please check your internet connection or disable any adblocker that blocks PayPal.",
+                    "error"
+                );
+                return;
+            }
+
+            paypal.Buttons({
+
+                // Create PayPal order through Flask backend
+                createOrder: async function () {
+                    try {
+                        showMessage("Creating secure payment order...", "loading");
+
+                        const response = await fetch("/create-paypal-order", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                transaction_id: transactionId
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok || !data.id) {
+                            throw new Error(data.error || "Unable to create payment order.");
+                        }
+
+                        paymentMessage.className = "";
+                        return data.id;
+
+                    } catch (error) {
+                        showMessage(error.message, "error");
+                        throw error;
+                    }
+                },
+
+                // Capture payment after buyer approval
+                onApprove: async function (data) {
+                    try {
+                        showMessage("Verifying and processing your payment...", "loading");
+                        paymentStatus.textContent = "Processing";
+
+                        const response = await fetch("/capture-paypal-order", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                transaction_id: transactionId,
+                                orderID: data.orderID
+                            })
+                        });
+
+                        const result = await response.json();
+
+                        if (!response.ok || result.status !== "COMPLETED") {
+                            throw new Error(result.error || "Payment verification failed.");
+                        }
+
+                        paymentStatus.textContent = "Completed";
+                        showMessage(
+                            "Payment successful! Your transaction has been securely completed.",
+                            "success"
+                        );
+
+                        paypalContainer.style.display = "none";
+
+                        setTimeout(() => {
+                            window.location.href = successUrl + "?transaction_id=" + encodeURIComponent(transactionId);
+                        }, 2000);
+
+                    } catch (error) {
+                        paymentStatus.textContent = "Verification Failed";
+                        showMessage(error.message, "error");
+                    }
+                },
+
+                // Buyer cancels payment
+                onCancel: function () {
+                    paymentStatus.textContent = "Cancelled";
+                    showMessage(
+                        "You cancelled the PayPal payment. No funds were transferred.",
+                        "error"
+                    );
+                },
+
+                // PayPal SDK error
+                onError: function (error) {
+                    console.error("PayPal error:", error);
+                    paymentStatus.textContent = "Failed";
+                    showMessage(
+                        "An error occurred with PayPal. Please try again or refresh the page.",
+                        "error"
+                    );
+                }
+
+            }).render("#paypal-button-container");
+        });
     </script>
 
 </body>

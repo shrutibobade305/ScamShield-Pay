@@ -17,8 +17,8 @@
 
     <nav>
         <a href="/">Home</a>
+        <a href="#analyzer">Scan &amp; Pay</a>
         <a href="#features">Features</a>
-        <a href="{{ url_for('payment') }}">Payment</a>
     </nav>
 </header>
 
@@ -33,7 +33,7 @@
 
         <p>
             ScamShield Pay uses machine learning to analyze
-            transactions and identify suspicious payment activity.
+            transactions in real time and protect you from fraudulent payment requests.
         </p>
 
         <a href="#analyzer" class="btn-primary">
@@ -47,7 +47,7 @@
     <div class="section-heading">
         <span class="tag">SMART FRAUD DETECTION</span>
         <h2>Transaction Risk Analyzer</h2>
-        <p>Enter transaction details to analyze fraud risk.</p>
+        <p>Enter transaction details to assess fraud risk before proceeding to payment.</p>
     </div>
 
     <form action="{{ url_for('predict') }}"
@@ -55,53 +55,51 @@
           class="analyzer-form">
 
         <div class="form-group">
-            <label>Transaction Amount (USD)</label>
-
+            <label for="amount">Transaction Amount (USD)</label>
             <input
                 type="number"
+                id="amount"
                 name="amount"
                 min="0.01"
                 max="10000000"
                 step="0.01"
-                placeholder="Enter amount"
+                placeholder="e.g. 150.00"
                 required>
         </div>
 
         <div class="form-group">
-            <label>Transaction Hour (0-23)</label>
-
+            <label for="transaction_hour">Transaction Hour (0-23)</label>
             <input
                 type="number"
+                id="transaction_hour"
                 name="transaction_hour"
                 min="0"
                 max="23"
-                value="12"
+                value="14"
                 required>
         </div>
 
         <div class="form-group">
-            <label>International Transaction?</label>
-
-            <select name="international">
-                <option value="0">No</option>
-                <option value="1">Yes</option>
+            <label for="international">International Transaction?</label>
+            <select id="international" name="international">
+                <option value="0">No (Domestic)</option>
+                <option value="1">Yes (Cross-Border)</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label>New Device Detected?</label>
-
-            <select name="new_device">
-                <option value="0">No</option>
-                <option value="1">Yes</option>
+            <label for="new_device">New Device Detected?</label>
+            <select id="new_device" name="new_device">
+                <option value="0">No (Recognized Device)</option>
+                <option value="1">Yes (Unrecognized Device)</option>
             </select>
         </div>
 
         <div class="form-group full-width">
-            <label>Previous Failed Attempts</label>
-
+            <label for="failed_attempts">Previous Failed Attempts</label>
             <input
                 type="number"
+                id="failed_attempts"
                 name="failed_attempts"
                 min="0"
                 max="20"
@@ -129,19 +127,19 @@
         <div class="feature-card">
             <div class="feature-icon">🤖</div>
             <h3>AI Fraud Detection</h3>
-            <p>Machine learning analyzes transaction patterns.</p>
+            <p>Trained Random Forest Classifier models behavioral transaction signals.</p>
         </div>
 
         <div class="feature-card">
             <div class="feature-icon">📊</div>
-            <h3>Risk Scoring</h3>
-            <p>Get a predicted fraud probability for each transaction.</p>
+            <h3>3-Tier Risk Scoring</h3>
+            <p>Immediate classification into Safe (&lt;35%), Suspicious (35-70%), or High Risk (≥70%).</p>
         </div>
 
         <div class="feature-card">
             <div class="feature-icon">🔒</div>
-            <h3>Payment Security</h3>
-            <p>Use PayPal Sandbox for secure payment testing.</p>
+            <h3>PayPal Sandbox Guard</h3>
+            <p>Strict server-side gating ensures only approved transactions can access checkout.</p>
         </div>
 
     </div>

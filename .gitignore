@@ -1,26 +1,41 @@
-# Python
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyo
 
-# Virtual environment
+# Virtual environments
 venv/
-.env/
 .venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Environment variables
+# Environment variables & secrets
 .env
+.env.*
+!.env.example
 
-# IDE
+# IDE & Editor files
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 
-# OS
+# Operating System files
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Logs
+# Logs and runtime artifacts
 *.log
+*.pid
 
-# Generated model
-# Keep scam_model.pkl if you want to version your trained model.
+# Pytest / Coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Redundant empty model directory
+model/
