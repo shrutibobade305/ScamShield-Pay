@@ -1,0 +1,305 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Secure Payment | ScamShield Pay</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <script
+        src="https://www.paypal.com/sdk/js?client-id={{ client_id|urlencode }}&currency={{ currency }}&intent=capture">
+    </script>
+
+    <style>
+        body {
+            background: #0b1020;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+
+        .payment-wrapper {
+            max-width: 520px;
+            margin: 65px auto;
+            padding: 35px;
+            border-radius: 18px;
+            background: #151a26;
+            text-align: center;
+        }
+
+        .payment-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .payment-amount {
+            font-size: 42px;
+            font-weight: bold;
+            margin: 25px 0;
+        }
+
+        .payment-details {
+            background: #202737;
+            border-radius: 12px;
+            padding: 18px;
+            margin: 25px 0;
+            text-align: left;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin: 12px 0;
+        }
+
+        .transaction-id {
+            color: #aab3c5;
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        #paypal-button-container {
+            margin-top: 25px;
+        }
+
+        #payment-message {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            line-height: 1.5;
+        }
+
+        .success {
+            display: block !important;
+            background: #123d2b;
+            color: #4ade80;
+        }
+
+        .error {
+            display: block !important;
+            background: #481d25;
+            color: #fb7185;
+        }
+
+        .loading {
+            display: block !important;
+            background: #202f50;
+            color: #93c5fd;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 25px;
+            color: #aab3c5;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="payment-wrapper">
+
+        <div class="payment-icon">🔒</div>
+
+        <h1>Secure Payment</h1>
+
+        <p>Complete your transaction securely using PayPal Sandbox.</p>
+
+        <div class="payment-amount">
+            {{ currency }} {{ "%.2f"|format(amount) }}
+        </div>
+
+        <div class="payment-details">
+
+            <div class="detail-row">
+                <span>Payment Status</span>
+                <strong id="payment-status">Pending</strong>
+            </div>
+
+            <div class="detail-row">
+                <span>Payment Method</span>
+                <strong>PayPal</strong>
+            </div>
+
+            <div class="detail-row">
+                <span>Currency</span>
+                <strong>{{ currency }}</strong>
+            </div>
+
+        </div>
+
+        <p class="transaction-id">
+            Transaction ID: {{ transaction_id }}
+        </p>
+
+        <div id="paypal-button-container"></div>
+
+        <div id="payment-message"></div>
+
+        <a href="{{ url_for('index') }}" class="back-link">
+            ← Back to Home
+        </a>
+
+    </div>
+
+
+    <script>
+
+        const transactionId = {{ transaction_id|tojson }};
+
+        const paymentMessage = document.getElementById("payment-message");
+        const paymentStatus = document.getElementById("payment-status");
+        const paypalContainer = document.getElementById("paypal-button-container");
+
+
+        function showMessage(message, type) {
+
+            paymentMessage.textContent = message;
+            paymentMessage.className = type;
+
+        }
+
+
+        paypal.Buttons({
+
+            // Create PayPal order through Flask backend
+            createOrder: async function () {
+
+                try {
+
+                    showMessage("Creating secure payment order...", "loading");
+
+                    const response = await fetch("/create-paypal-order", {
+
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+                            transaction_id: transactionId
+                        })
+
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.id) {
+                        throw new Error(data.error || "Unable to create payment order.");
+                    }
+
+                    paymentMessage.className = "";
+
+                    return data.id;
+
+                } catch (error) {
+
+                    showMessage(error.message, "error");
+
+                    throw error;
+
+                }
+
+            },
+
+
+            // Capture payment after buyer approval
+            onApprove: async function (data) {
+
+                try {
+
+                    showMessage("Verifying and processing your payment...", "loading");
+
+                    paymentStatus.textContent = "Processing";
+
+                    const response = await fetch("/capture-paypal-order", {
+
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            transaction_id: transactionId,
+
+                            orderID: data.orderID
+
+                        })
+
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok || result.status !== "COMPLETED") {
+                        throw new Error(result.error || "Payment verification failed.");
+                    }
+
+                    paymentStatus.textContent = "Completed";
+
+                    showMessage(
+                        "Payment successful! Your transaction has been completed.",
+                        "success"
+                    );
+
+                    paypalContainer.style.display = "none";
+
+                    setTimeout(() => {
+
+                        window.location.href = "{{ url_for('payment_success') }}";
+
+                    }, 2500);
+
+                } catch (error) {
+
+                    paymentStatus.textContent = "Verification Failed";
+
+                    showMessage(error.message, "error");
+
+                }
+
+            },
+
+
+            // Buyer cancels payment
+            onCancel: function () {
+
+                paymentStatus.textContent = "Cancelled";
+
+                showMessage(
+                    "You cancelled the payment. No successful payment was recorded.",
+                    "error"
+                );
+
+            },
+
+
+            // PayPal SDK error
+            onError: function (error) {
+
+                console.error("PayPal error:", error);
+
+                showMessage(
+                    "Something went wrong with PayPal. Please try again.",
+                    "error"
+                );
+
+            }
+
+        }).render("#paypal-button-container");
+
+    </script>
+
+</body>
+</html>

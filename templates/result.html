@@ -1,0 +1,222 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Analysis | ScamShield Pay</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .result-wrapper {
+            max-width: 650px;
+            margin: 60px auto;
+            padding: 35px;
+            border-radius: 18px;
+            background: #151a26;
+            color: #fff;
+            text-align: center;
+        }
+
+        .result-icon {
+            font-size: 55px;
+            margin-bottom: 15px;
+        }
+
+        .risk-score {
+            font-size: 52px;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 10px 22px;
+            border-radius: 30px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .safe {
+            background: #123d2b;
+            color: #4ade80;
+        }
+
+        .suspicious {
+            background: #493617;
+            color: #fbbf24;
+        }
+
+        .danger {
+            background: #481d25;
+            color: #fb7185;
+        }
+
+        .result-details {
+            background: #202737;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 25px 0;
+            text-align: left;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin: 12px 0;
+        }
+
+        .btn-primary, .btn-secondary {
+            display: inline-block;
+            padding: 13px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 8px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #635bff;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #30394a;
+            color: white;
+        }
+
+        .message {
+            color: #aab3c5;
+            line-height: 1.6;
+            margin: 15px 0 25px;
+        }
+
+        .transaction-id {
+            font-size: 12px;
+            color: #aab3c5;
+            word-break: break-all;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="result-wrapper">
+
+        {% if result.decision == "approved" %}
+
+            <div class="result-icon">✅</div>
+            <h1>Transaction Approved</h1>
+            <span class="status safe">Safe Transaction</span>
+
+            <p class="message">
+                Our fraud detection model has classified this transaction
+                as low risk. You can safely proceed to the payment step
+                in this demo.
+            </p>
+
+        {% elif result.decision == "review" %}
+
+            <div class="result-icon">⚠️</div>
+            <h1>Transaction Under Review</h1>
+            <span class="status suspicious">Suspicious Transaction</span>
+
+            <p class="message">
+                This transaction has a moderate risk score.
+                Payment has been disabled pending further review.
+            </p>
+
+        {% elif result.decision == "blocked" %}
+
+            <div class="result-icon">🚨</div>
+            <h1>Transaction Blocked</h1>
+            <span class="status danger">High Risk Transaction</span>
+
+            <p class="message">
+                Our fraud detection model identified a high-risk transaction.
+                Payment has been blocked for your protection.
+            </p>
+
+        {% elif result.decision == "completed" %}
+
+            <div class="result-icon">🎉</div>
+            <h1>Payment Successful</h1>
+            <span class="status safe">Payment Completed</span>
+
+            <p class="message">
+                Your payment has been successfully completed.
+            </p>
+
+        {% else %}
+
+            <div class="result-icon">ℹ️</div>
+            <h1>Transaction Result</h1>
+
+        {% endif %}
+
+
+        {% if result.decision != "completed" %}
+
+            <div class="risk-score">
+                {{ "%.2f"|format(result.risk_score) }}%
+            </div>
+
+            <p>Fraud Risk Score</p>
+
+            <div class="result-details">
+
+                <div class="detail-row">
+                    <span>Transaction Amount</span>
+                    <strong>${{ "%.2f"|format(result.amount) }}</strong>
+                </div>
+
+                <div class="detail-row">
+                    <span>Risk Score</span>
+                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
+                </div>
+
+                <div class="detail-row">
+                    <span>Decision</span>
+                    <strong>{{ result.status }}</strong>
+                </div>
+
+            </div>
+
+        {% endif %}
+
+
+        {% if result.decision == "approved" %}
+
+            <a
+                href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
+                class="btn-primary">
+                Continue to Payment →
+            </a>
+
+        {% else %}
+
+            <a href="{{ url_for('index') }}" class="btn-secondary">
+                Try Another Transaction
+            </a>
+
+        {% endif %}
+
+        {% if result.transaction_id %}
+            <p class="transaction-id">
+                Transaction ID: {{ result.transaction_id }}
+            </p>
+        {% endif %}
+
+        <br>
+
+        <a href="{{ url_for('index') }}" class="btn-secondary">
+            Back to Home
+        </a>
+
+    </div>
+
+</body>
+</html>

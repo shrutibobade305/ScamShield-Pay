@@ -1,0 +1,9 @@
+Flask
+Flask-SQLAlchemy
+Flask-WTF
+python-dotenv
+scikit-learn
+pandas
+numpy
+joblib
+requests

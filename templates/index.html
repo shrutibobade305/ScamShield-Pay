@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ScamShield Pay | AI Fraud Protection</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<header class="navbar">
+    <div class="logo">🛡️ ScamShield Pay</div>
+
+    <nav>
+        <a href="/">Home</a>
+        <a href="#features">Features</a>
+        <a href="{{ url_for('payment') }}">Payment</a>
+    </nav>
+</header>
+
+<section class="hero">
+    <div class="hero-content">
+        <span class="tag">AI POWERED PAYMENT SECURITY</span>
+
+        <h1>
+            Protect Every <span>Payment.</span><br>
+            Detect Every Scam.
+        </h1>
+
+        <p>
+            ScamShield Pay uses machine learning to analyze
+            transactions and identify suspicious payment activity.
+        </p>
+
+        <a href="#analyzer" class="btn-primary">
+            Analyze Transaction →
+        </a>
+    </div>
+</section>
+
+<section class="analyzer" id="analyzer">
+
+    <div class="section-heading">
+        <span class="tag">SMART FRAUD DETECTION</span>
+        <h2>Transaction Risk Analyzer</h2>
+        <p>Enter transaction details to analyze fraud risk.</p>
+    </div>
+
+    <form action="{{ url_for('predict') }}"
+          method="POST"
+          class="analyzer-form">
+
+        <div class="form-group">
+            <label>Transaction Amount (USD)</label>
+
+            <input
+                type="number"
+                name="amount"
+                min="0.01"
+                max="10000000"
+                step="0.01"
+                placeholder="Enter amount"
+                required>
+        </div>
+
+        <div class="form-group">
+            <label>Transaction Hour (0-23)</label>
+
+            <input
+                type="number"
+                name="transaction_hour"
+                min="0"
+                max="23"
+                value="12"
+                required>
+        </div>
+
+        <div class="form-group">
+            <label>International Transaction?</label>
+
+            <select name="international">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>New Device Detected?</label>
+
+            <select name="new_device">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+            </select>
+        </div>
+
+        <div class="form-group full-width">
+            <label>Previous Failed Attempts</label>
+
+            <input
+                type="number"
+                name="failed_attempts"
+                min="0"
+                max="20"
+                value="0"
+                required>
+        </div>
+
+        <button type="submit" class="btn-primary full-width">
+            Analyze Transaction →
+        </button>
+
+    </form>
+
+</section>
+
+<section class="features" id="features">
+
+    <div class="section-heading">
+        <span class="tag">WHY SCAMSHIELD PAY?</span>
+        <h2>Intelligent Payment Protection</h2>
+    </div>
+
+    <div class="feature-grid">
+
+        <div class="feature-card">
+            <div class="feature-icon">🤖</div>
+            <h3>AI Fraud Detection</h3>
+            <p>Machine learning analyzes transaction patterns.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Risk Scoring</h3>
+            <p>Get a predicted fraud probability for each transaction.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Payment Security</h3>
+            <p>Use PayPal Sandbox for secure payment testing.</p>
+        </div>
+
+    </div>
+
+</section>
+
+<footer>
+    <p>© 2026 ScamShield Pay. AI-Powered Payment Protection.</p>
+</footer>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>
