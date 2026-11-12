@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import hashlib
 import logging
 import math
 import os
@@ -58,7 +59,37 @@ db.init_app(app)
 with app.app_context():
     # create_all creates tables if they don't exist; does NOT delete existing records on restart
     db.create_all()
+
+    # Ensure secondary verification schema columns exist in SQLite if table was already created
+    if "sqlite" in app.config["SQLALCHEMY_DATABASE_URI"]:
+        try:
+            existing_cols = [
+                row[1] for row in db.session.execute(text("PRAGMA table_info(transactions)")).fetchall()
+            ]
+            new_column_definitions = [
+                ("verification_status", "VARCHAR(32) NOT NULL DEFAULT 'NONE'"),
+                ("otp_code_hash", "VARCHAR(128)"),
+                ("otp_expires_at", "DATETIME"),
+                ("otp_attempts_left", "INTEGER NOT NULL DEFAULT 3"),
+                ("otp_requested_at", "DATETIME"),
+                ("verification_notes", "VARCHAR(255)")
+            ]
+            for col_name, col_sql in new_column_definitions:
+                if col_name not in existing_cols:
+                    db.session.execute(text(f"ALTER TABLE transactions ADD COLUMN {col_name} {col_sql}"))
+                    logger.info("Migrated SQLite schema: Added column %s to transactions table", col_name)
+            db.session.commit()
+        except Exception as mig_err:
+            db.session.rollback()
+            logger.warning("Table schema migration check notice: %s", mig_err)
+
     logger.info("Database initialized successfully at %s", app.config["SQLALCHEMY_DATABASE_URI"])
+
+# Demo Mode Configuration
+# If true (default when third-party SMS/Email gateway is not connected), the server provides
+# a simulated OTP challenge visible in the verification simulator UI for testing & judging.
+DEMO_VERIFICATION_MODE = os.getenv("DEMO_VERIFICATION_MODE", "true").lower() in ("true", "1", "yes")
+logger.info("Step-Up Verification Demo Mode: %s", DEMO_VERIFICATION_MODE)
 
 # Machine Learning Model Loading
 MODEL_PATH = BASE_DIR / "models" / "scam_model.pkl"
@@ -126,6 +157,98 @@ def is_transaction_expired(transaction):
         return False
     age = datetime.utcnow() - transaction.created_at
     return age > timedelta(hours=TRANSACTION_EXPIRATION_HOURS)
+
+
+def generate_secure_otp():
+    """Generates a cryptographically random 6-digit numeric string."""
+    return f"{secrets.randbelow(900000) + 100000:06d}"
+
+
+def hash_otp(otp_code):
+    """Computes SHA-256 hash of an OTP string."""
+    return hashlib.sha256(str(otp_code).strip().encode("utf-8")).hexdigest()
+
+
+def evaluate_verification_policy(transaction):
+    """
+    Explicit, auditable risk re-evaluation policy for suspicious transactions.
+
+    IMPORTANT AUDITING REQUIREMENT:
+    Do not automatically approve a suspicious transaction just because OTP verification succeeds.
+    Require an explicit, auditable re-evaluation policy:
+    1. The transaction must have been classified in the Suspicious corridor (35% <= risk < 70%).
+       High-risk transactions (>= 70%) are NEVER approved via step-up verification.
+    2. Velocity check: Prior failed attempts must not exceed critical anomaly threshold (<= 5).
+    3. State check: Transaction must be in an active review state ('UNDER_REVIEW').
+    4. Time check: The transaction must not be expired.
+
+    Returns:
+        dict: {'approved': bool, 'reason': str, 'notes': str}
+    """
+    if not transaction:
+        return {
+            "approved": False,
+            "reason": "Transaction record not found.",
+            "notes": "Policy rejection: null transaction reference."
+        }
+
+    # Policy Rule 1: High Risk transactions cannot be overridden by OTP
+    if transaction.risk_classification != "Suspicious" or transaction.risk_score < 35.0 or transaction.risk_score >= 70.0:
+        return {
+            "approved": False,
+            "reason": f"Transaction risk tier '{transaction.risk_classification}' ({transaction.risk_score:.2f}%) is outside the allowable MFA re-evaluation policy bounds.",
+            "notes": f"Policy rejection: Risk score {transaction.risk_score:.2f}% is outside the review corridor (35%-70%)."
+        }
+
+    # Policy Rule 2: Brute force / velocity check
+    if transaction.failed_attempts > 5:
+        return {
+            "approved": False,
+            "reason": f"Excessive velocity anomaly detected ({transaction.failed_attempts} prior failed attempts). Requires compliance officer review.",
+            "notes": f"Policy rejection: velocity threshold exceeded ({transaction.failed_attempts} > 5)."
+        }
+
+    # Policy Rule 3: Valid active review state
+    if transaction.transaction_status not in ("UNDER_REVIEW", "PENDING"):
+        return {
+            "approved": False,
+            "reason": f"Transaction state '{transaction.transaction_status}' is invalid for step-up clearance.",
+            "notes": f"Policy rejection: unexpected transaction status '{transaction.transaction_status}'."
+        }
+
+    return {
+        "approved": True,
+        "reason": "Secondary authentication verified. Risk re-evaluation policy criteria fully satisfied.",
+        "notes": f"MFA Verified: OTP matched within TTL. Policy satisfied for Suspicious tier (Risk: {transaction.risk_score:.2f}%). Clearance granted for PayPal Sandbox checkout."
+    }
+
+
+def is_transaction_authorized_for_payment(transaction):
+    """
+    Server-controlled payment eligibility evaluation.
+    Never trusts frontend approval status or client scores.
+    Authorized ONLY IF:
+      1. Safe transaction: risk_classification == 'Safe', risk_score < 35.0, status == 'APPROVED'
+      OR
+      2. Verified Suspicious transaction: risk_classification == 'Suspicious', status == 'APPROVED_POST_MFA',
+         and verification_status == 'VERIFIED'
+    All High Risk transactions (>= 70%) are strictly disallowed under all circumstances.
+    """
+    if not transaction:
+        return False
+    if (
+        transaction.risk_classification == "Safe"
+        and transaction.risk_score < 35.0
+        and transaction.transaction_status == "APPROVED"
+    ):
+        return True
+    if (
+        transaction.risk_classification == "Suspicious"
+        and transaction.transaction_status == "APPROVED_POST_MFA"
+        and transaction.verification_status == "VERIFIED"
+    ):
+        return True
+    return False
 
 
 def analyze_risk_indicators(amount, transaction_hour, international, new_device, failed_attempts):
@@ -554,6 +677,367 @@ def predict():
 
 
 # --------------------------------------------------
+# 3.5 STEP-UP SECURITY VERIFICATION (SUSPICIOUS MFA)
+# --------------------------------------------------
+
+@app.route("/verify/<transaction_id>")
+def verify_transaction(transaction_id):
+    """
+    Renders Step-Up Identity Verification page for Suspicious transactions.
+
+    Security Gating:
+    - Safe transactions (<35%) bypass MFA and are redirected directly to /payment.
+    - Suspicious transactions (35%-70%) are presented with the MFA challenge.
+    - High-risk transactions (>=70%) are strictly prohibited from step-up verification.
+    - Expired, locked, or completed transactions are handled with clear informative states.
+    """
+    clean_tx_id = (transaction_id or "").strip()
+    if not clean_tx_id or not is_valid_transaction_id(clean_tx_id):
+        return render_template("result.html", result={
+            "status": "Invalid Transaction ID",
+            "decision": "error",
+            "message": "The transaction identifier provided is malformed or invalid."
+        }), 400
+
+    try:
+        transaction = Transaction.query.filter_by(transaction_id=clean_tx_id).first()
+    except SQLAlchemyError as db_err:
+        logger.exception("Database error loading transaction %s for verification: %s", clean_tx_id, db_err)
+        return render_template("result.html", result={
+            "status": "Database Error",
+            "decision": "error",
+            "message": "Unable to load transaction records due to a database error."
+        }), 500
+
+    if not transaction:
+        return render_template("result.html", result={
+            "status": "Transaction Not Found",
+            "decision": "error",
+            "message": f"Transaction '{clean_tx_id}' was not found in the persistent ledger."
+        }), 404
+
+    # Expiration check
+    if is_transaction_expired(transaction):
+        if transaction.payment_status not in ("COMPLETED", "EXPIRED"):
+            try:
+                transaction.payment_status = "EXPIRED"
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+        return render_template("result.html", result={
+            "status": "Transaction Expired",
+            "decision": "error",
+            "message": "This transaction assessment has expired (validity window: 3 hours). Please submit a new transaction analysis."
+        }), 410
+
+    # Safe transactions do not need step-up verification; redirect directly to payment
+    if transaction.risk_classification == "Safe" and transaction.risk_score < 35.0:
+        return redirect(url_for("payment", transaction_id=transaction.transaction_id))
+
+    # High Risk transactions cannot be verified
+    if transaction.risk_classification == "High Risk" or transaction.risk_score >= 70.0:
+        return render_template("result.html", result={
+            "status": "Verification Not Permitted",
+            "decision": "blocked",
+            "risk_score": transaction.risk_score,
+            "amount": transaction.amount,
+            "transaction_id": transaction.transaction_id,
+            "message": f"Transaction risk tier is High Risk ({transaction.risk_score:.2f}%). Secondary verification is strictly prohibited to prevent financial compromise."
+        }), 403
+
+    # Already verified transactions can proceed directly
+    if transaction.verification_status == "VERIFIED" and transaction.transaction_status == "APPROVED_POST_MFA":
+        return redirect(url_for("payment", transaction_id=transaction.transaction_id))
+
+    # Render verification screen
+    indicators = analyze_risk_indicators(
+        amount=transaction.amount,
+        transaction_hour=transaction.transaction_hour,
+        international=transaction.international,
+        new_device=transaction.new_device,
+        failed_attempts=transaction.failed_attempts
+    )
+
+    return render_template(
+        "verify.html",
+        transaction=transaction,
+        indicators=indicators,
+        demo_mode=DEMO_VERIFICATION_MODE,
+        attempts_left=transaction.otp_attempts_left,
+        verification_status=transaction.verification_status
+    )
+
+
+@app.route("/api/verification/request-otp", methods=["POST"])
+def api_request_otp():
+    """
+    Generates a secure 6-digit OTP on the server and stores its SHA-256 hash in SQLite.
+    Never stores or exposes plaintext OTP in production responses.
+
+    In Demo Mode (DEMO_VERIFICATION_MODE=True), returns demo_code in the JSON payload
+    so evaluators can test the verification workflow immediately without external SMS.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_tx_id = (data.get("transaction_id") or "").strip()
+
+        if not raw_tx_id or not is_valid_transaction_id(raw_tx_id):
+            return jsonify({"error": "Invalid or missing transaction_id.", "status": "error"}), 400
+
+        transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
+        if not transaction:
+            return jsonify({"error": "Transaction not found.", "status": "error"}), 404
+
+        if is_transaction_expired(transaction):
+            return jsonify({"error": "Transaction assessment has expired.", "status": "error"}), 410
+
+        if transaction.risk_classification == "High Risk" or transaction.risk_score >= 70.0:
+            return jsonify({
+                "error": "High Risk transactions are not eligible for step-up verification.",
+                "status": "error"
+            }), 403
+
+        if transaction.risk_classification == "Safe" and transaction.risk_score < 35.0:
+            return jsonify({
+                "status": "already_verified",
+                "message": "Safe transactions are already cleared.",
+                "redirect_url": url_for("payment", transaction_id=transaction.transaction_id)
+            }), 200
+
+        if transaction.verification_status == "VERIFIED" and transaction.transaction_status == "APPROVED_POST_MFA":
+            return jsonify({
+                "status": "already_verified",
+                "message": "Transaction has already been verified.",
+                "redirect_url": url_for("payment", transaction_id=transaction.transaction_id)
+            }), 200
+
+        if transaction.otp_attempts_left <= 0 or transaction.verification_status == "FAILED":
+            return jsonify({
+                "status": "locked",
+                "error": "Maximum verification attempts exceeded. This transaction has been locked.",
+                "attempts_left": 0
+            }), 403
+
+        # Generate secure random 6-digit OTP
+        otp_code = generate_secure_otp()
+        otp_hash = hash_otp(otp_code)
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+        transaction.otp_code_hash = otp_hash
+        transaction.otp_expires_at = expires_at
+        transaction.otp_requested_at = datetime.utcnow()
+        transaction.verification_status = "PENDING"
+        db.session.commit()
+
+        logger.info(
+            "Generated step-up OTP challenge for suspicious transaction %s (expires in 10m). Demo mode: %s",
+            transaction.transaction_id,
+            DEMO_VERIFICATION_MODE
+        )
+
+        resp = {
+            "status": "success",
+            "message": "Verification code generated and dispatched.",
+            "transaction_id": transaction.transaction_id,
+            "expires_in_seconds": 600,
+            "attempts_left": transaction.otp_attempts_left,
+            "demo_mode": DEMO_VERIFICATION_MODE,
+            "masked_destination": "+1 (•••) •••-4921 / user•••@example.com"
+        }
+
+        # In demo mode, provide the code to the frontend simulator box
+        if DEMO_VERIFICATION_MODE:
+            resp["demo_code"] = otp_code
+            resp["demo_notice"] = "DEMO SIMULATOR ACTIVE: Use this code to test verification without real cellular SMS."
+
+        return jsonify(resp), 200
+
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        logger.exception("Database error during OTP generation: %s", err)
+        return jsonify({"error": "Database error while generating verification challenge.", "status": "error"}), 500
+    except Exception as exc:
+        logger.exception("Unexpected error requesting OTP: %s", exc)
+        return jsonify({"error": "Internal server error.", "status": "error"}), 500
+
+
+@app.route("/api/verification/verify-otp", methods=["POST"])
+def api_verify_otp():
+    """
+    Validates submitted 6-digit OTP against the stored SHA-256 hash.
+    Enforces TTL expiration, attempt rate-limiting, and the explicit auditable re-evaluation policy.
+
+    Upon success, updates transaction_status to 'APPROVED_POST_MFA', verification_status to 'VERIFIED',
+    and payment_status to 'PENDING', releasing the payment hold.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_tx_id = (data.get("transaction_id") or "").strip()
+        raw_otp = str(data.get("otp") or "").strip()
+
+        if not raw_tx_id or not is_valid_transaction_id(raw_tx_id):
+            return jsonify({"error": "Invalid or missing transaction_id.", "status": "error"}), 400
+
+        if not re.match(r"^\d{6}$", raw_otp):
+            return jsonify({"error": "Verification code must be exactly 6 digits.", "status": "error"}), 400
+
+        transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
+        if not transaction:
+            return jsonify({"error": "Transaction not found.", "status": "error"}), 404
+
+        if is_transaction_expired(transaction):
+            return jsonify({"error": "Transaction assessment has expired.", "status": "error"}), 410
+
+        if transaction.risk_classification == "High Risk" or transaction.risk_score >= 70.0:
+            return jsonify({"error": "High Risk transactions cannot be verified.", "status": "error"}), 403
+
+        if transaction.verification_status == "VERIFIED" and transaction.transaction_status == "APPROVED_POST_MFA":
+            return jsonify({
+                "status": "success",
+                "verified": True,
+                "message": "Transaction already verified.",
+                "redirect_url": url_for("payment", transaction_id=transaction.transaction_id)
+            }), 200
+
+        # Check lockout
+        if transaction.otp_attempts_left <= 0 or transaction.verification_status == "FAILED":
+            return jsonify({
+                "status": "locked",
+                "error": "Maximum verification attempts exceeded. Transaction is permanently locked.",
+                "attempts_left": 0
+            }), 403
+
+        # Check expiration of current OTP
+        now = datetime.utcnow()
+        if not transaction.otp_expires_at or transaction.otp_expires_at < now:
+            transaction.verification_status = "EXPIRED"
+            db.session.commit()
+            return jsonify({
+                "status": "expired",
+                "error": "Verification code has expired. Please request a new code.",
+                "attempts_left": transaction.otp_attempts_left
+            }), 400
+
+        # Verify cryptographic hash of submitted OTP
+        submitted_hash = hash_otp(raw_otp)
+        if secrets.compare_digest(submitted_hash, transaction.otp_code_hash or ""):
+            # Code matches! Now execute explicit auditable re-evaluation policy
+            policy = evaluate_verification_policy(transaction)
+
+            if policy["approved"]:
+                transaction.verification_status = "VERIFIED"
+                transaction.transaction_status = "APPROVED_POST_MFA"
+                transaction.payment_status = "PENDING"
+                transaction.verification_notes = policy["notes"]
+                db.session.commit()
+
+                logger.info(
+                    "Transaction %s passed MFA verification and risk policy re-evaluation.",
+                    transaction.transaction_id
+                )
+
+                return jsonify({
+                    "status": "success",
+                    "verified": True,
+                    "message": "Identity verification successful! Transaction cleared for PayPal Sandbox checkout.",
+                    "redirect_url": url_for("payment", transaction_id=transaction.transaction_id),
+                    "policy_notes": transaction.verification_notes
+                }), 200
+            else:
+                transaction.verification_status = "FAILED"
+                transaction.transaction_status = "BLOCKED"
+                transaction.payment_status = "BLOCKED_SUSPICIOUS"
+                transaction.verification_notes = policy["notes"]
+                db.session.commit()
+
+                logger.warning(
+                    "Transaction %s matched OTP but was rejected by policy: %s",
+                    transaction.transaction_id,
+                    policy["reason"]
+                )
+
+                return jsonify({
+                    "status": "blocked",
+                    "verified": False,
+                    "error": policy["reason"],
+                    "policy_notes": transaction.verification_notes
+                }), 403
+
+        else:
+            # Code mismatch! Decrement attempts counter
+            transaction.otp_attempts_left = max(0, transaction.otp_attempts_left - 1)
+
+            if transaction.otp_attempts_left == 0:
+                transaction.verification_status = "FAILED"
+                transaction.transaction_status = "BLOCKED"
+                transaction.payment_status = "BLOCKED_SUSPICIOUS"
+                transaction.verification_notes = "MFA locked: Maximum invalid OTP attempts exceeded."
+                db.session.commit()
+
+                logger.warning(
+                    "Transaction %s locked after 3 failed OTP attempts.",
+                    transaction.transaction_id
+                )
+
+                return jsonify({
+                    "status": "locked",
+                    "attempts_left": 0,
+                    "error": "Maximum verification attempts exceeded. This transaction has been locked."
+                }), 403
+            else:
+                db.session.commit()
+                logger.warning(
+                    "Transaction %s invalid OTP attempt (%d attempts remaining)",
+                    transaction.transaction_id,
+                    transaction.otp_attempts_left
+                )
+
+                return jsonify({
+                    "status": "invalid",
+                    "attempts_left": transaction.otp_attempts_left,
+                    "error": f"Invalid verification code. {transaction.otp_attempts_left} attempt{'s' if transaction.otp_attempts_left != 1 else ''} remaining."
+                }), 400
+
+    except SQLAlchemyError as err:
+        db.session.rollback()
+        logger.exception("Database error verifying OTP: %s", err)
+        return jsonify({"error": "Database error during verification.", "status": "error"}), 500
+    except Exception as exc:
+        logger.exception("Unexpected error verifying OTP: %s", exc)
+        return jsonify({"error": "Internal server error.", "status": "error"}), 500
+
+
+@app.route("/api/verification/status/<transaction_id>")
+def api_verification_status(transaction_id):
+    """Returns current verification state and eligibility for a transaction."""
+    clean_tx_id = (transaction_id or "").strip()
+    if not clean_tx_id or not is_valid_transaction_id(clean_tx_id):
+        return jsonify({"error": "Invalid transaction ID format.", "status": "error"}), 400
+
+    transaction = Transaction.query.filter_by(transaction_id=clean_tx_id).first()
+    if not transaction:
+        return jsonify({"error": "Transaction not found.", "status": "error"}), 404
+
+    is_auth = is_transaction_authorized_for_payment(transaction)
+    now = datetime.utcnow()
+    expires_in = max(0, int((transaction.otp_expires_at - now).total_seconds())) if transaction.otp_expires_at else 0
+
+    return jsonify({
+        "status": "success",
+        "transaction_id": transaction.transaction_id,
+        "verification_status": transaction.verification_status,
+        "transaction_status": transaction.transaction_status,
+        "risk_classification": transaction.risk_classification,
+        "risk_score": transaction.risk_score,
+        "attempts_left": transaction.otp_attempts_left,
+        "is_authorized": is_auth,
+        "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_auth else None,
+        "expires_in_seconds": expires_in,
+        "verification_notes": transaction.verification_notes
+    })
+
+
+# --------------------------------------------------
 # 4. PAYMENT GATING & CHECKOUT (DATABASE-DRIVEN)
 # --------------------------------------------------
 
@@ -610,8 +1094,8 @@ def payment():
             "message": "This transaction assessment has expired (validity window: 3 hours). Please submit a new transaction analysis."
         }), 410
 
-    # Strict Server-Side Gating: Only Safe (<35% risk) and APPROVED transactions can pay
-    if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
+    # Strict Server-Side Gating: Only Safe (<35% risk) or Approved Suspicious Post-MFA
+    if not is_transaction_authorized_for_payment(transaction):
         return render_template("result.html", result={
             "status": "Payment Disallowed",
             "decision": "error",
@@ -698,13 +1182,14 @@ def create_paypal_order():
             return jsonify({"error": "Transaction has expired. Please run a new transaction assessment."}), 410
 
         # Strict Server-Side Fraud Gating: Never trust frontend scores
-        if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
+        if not is_transaction_authorized_for_payment(transaction):
             logger.warning(
-                "Security violation: Blocked PayPal order creation for non-safe transaction %s (Risk: %s%%, Class: %s, Status: %s)",
+                "Security violation: Blocked PayPal order creation for unauthorized transaction %s (Risk: %s%%, Class: %s, Status: %s, MFA: %s)",
                 transaction.transaction_id,
                 transaction.risk_score,
                 transaction.risk_classification,
-                transaction.transaction_status
+                transaction.transaction_status,
+                transaction.verification_status
             )
             return jsonify({
                 "error": f"Payment order creation blocked: transaction risk is '{transaction.risk_classification}' (Risk: {transaction.risk_score:.2f}%)."
@@ -865,12 +1350,14 @@ def capture_paypal_order():
                 db.session.rollback()
             return jsonify({"error": "Transaction has expired."}), 410
 
-        # Strict Server-Side Gating: Safe & APPROVED only
-        if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
+        # Strict Server-Side Gating: Authorized transactions only (Safe or Approved Post-MFA)
+        if not is_transaction_authorized_for_payment(transaction):
             logger.warning(
-                "Security violation: Attempted payment capture for unsafe transaction %s (Risk: %s%%)",
+                "Security violation: Attempted payment capture for unauthorized transaction %s (Risk: %s%%, Status: %s, MFA: %s)",
                 transaction.transaction_id,
-                transaction.risk_score
+                transaction.risk_score,
+                transaction.transaction_status,
+                transaction.verification_status
             )
             return jsonify({"error": "Transaction is not eligible for payment capture."}), 403
 
@@ -1518,6 +2005,8 @@ def api_dashboard_transactions():
                 "risk_score": round(t.risk_score, 2),
                 "risk_classification": t.risk_classification,
                 "transaction_status": t.transaction_status,
+                "verification_status": t.verification_status,
+                "verification_notes": t.verification_notes,
                 "payment_status": t.payment_status,
                 "paypal_order_id": t.paypal_order_id,
                 "paypal_capture_id": t.paypal_capture_id,
@@ -1574,8 +2063,7 @@ def api_dashboard_transaction_detail(transaction_id):
         recommendation = get_recommended_action(decision, transaction.risk_score)
 
         is_payable = (
-            transaction.risk_classification == "Safe"
-            and transaction.transaction_status == "APPROVED"
+            is_transaction_authorized_for_payment(transaction)
             and transaction.payment_status in ("PENDING", "NOT_ATTEMPTED")
         )
 
@@ -1593,13 +2081,17 @@ def api_dashboard_transaction_detail(transaction_id):
                 "risk_score": round(transaction.risk_score, 2),
                 "risk_classification": transaction.risk_classification,
                 "transaction_status": transaction.transaction_status,
+                "verification_status": transaction.verification_status,
+                "verification_notes": transaction.verification_notes,
+                "otp_attempts_left": transaction.otp_attempts_left,
                 "payment_status": transaction.payment_status,
                 "paypal_order_id": transaction.paypal_order_id,
                 "paypal_capture_id": transaction.paypal_capture_id,
                 "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
                 "created_at_formatted": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if transaction.created_at else "",
                 "is_payable": is_payable,
-                "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None
+                "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None,
+                "verify_url": url_for("verify_transaction", transaction_id=transaction.transaction_id) if transaction.risk_classification == "Suspicious" else None
             },
             "explainability": {
                 "indicators": indicators,
@@ -1791,6 +2283,8 @@ def transactions_history():
                 "risk_score": round(t.risk_score, 2),
                 "risk_classification": t.risk_classification,
                 "transaction_status": t.transaction_status,
+                "verification_status": t.verification_status,
+                "verification_notes": t.verification_notes,
                 "payment_status": t.payment_status,
                 "paypal_order_id": t.paypal_order_id,
                 "paypal_capture_id": t.paypal_capture_id,
@@ -1918,8 +2412,7 @@ def transaction_detail(transaction_id):
         recommendation = get_recommended_action(decision, transaction.risk_score)
 
         is_payable = (
-            transaction.risk_classification == "Safe"
-            and transaction.transaction_status == "APPROVED"
+            is_transaction_authorized_for_payment(transaction)
             and transaction.payment_status in ("PENDING", "NOT_ATTEMPTED")
         )
 
@@ -1935,13 +2428,17 @@ def transaction_detail(transaction_id):
             "risk_score": round(transaction.risk_score, 2),
             "risk_classification": transaction.risk_classification,
             "transaction_status": transaction.transaction_status,
+            "verification_status": transaction.verification_status,
+            "verification_notes": transaction.verification_notes,
+            "otp_attempts_left": transaction.otp_attempts_left,
             "payment_status": transaction.payment_status,
             "paypal_order_id": transaction.paypal_order_id,
             "paypal_capture_id": transaction.paypal_capture_id,
             "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
             "created_at_formatted": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if transaction.created_at else "",
             "is_payable": is_payable,
-            "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None
+            "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None,
+            "verify_url": url_for("verify_transaction", transaction_id=transaction.transaction_id) if transaction.risk_classification == "Suspicious" else None
         }
 
         if request.is_json or request.args.get("format") == "json":

@@ -407,7 +407,7 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 {% if transaction.risk_classification == 'Safe' %}
                     <span class="badge-pill badge-safe">🟢 Safe</span>
                 {% elif transaction.risk_classification == 'Suspicious' %}
@@ -419,6 +419,18 @@
                 <span class="badge-pill" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: #fff;">
                     {{ transaction.transaction_status }}
                 </span>
+
+                {% if transaction.verification_status and transaction.verification_status != 'NONE' %}
+                    {% if transaction.verification_status == 'VERIFIED' %}
+                        <span class="badge-pill badge-safe">🛡️ MFA Verified</span>
+                    {% elif transaction.verification_status == 'PENDING' %}
+                        <span class="badge-pill badge-warn">⏳ MFA Pending</span>
+                    {% elif transaction.verification_status == 'FAILED' %}
+                        <span class="badge-pill badge-danger">❌ MFA Failed</span>
+                    {% elif transaction.verification_status == 'EXPIRED' %}
+                        <span class="badge-pill" style="background: rgba(255,255,255,0.06); color: #cbd5e1;">⏱️ MFA Expired</span>
+                    {% endif %}
+                {% endif %}
             </div>
         </div>
 
@@ -566,10 +578,20 @@
                 <div style="margin-top: 16px; padding: 16px; background: rgba(16, 185, 129, 0.08); border: 1px solid var(--safe-border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div>
                         <strong style="color: var(--safe-color); font-size: 13.5px;">Transaction is Approved &amp; Payable</strong>
-                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">This low-risk payment is cleared for checkout via PayPal Sandbox.</p>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">This payment is cleared for checkout via PayPal Sandbox.</p>
                     </div>
                     <a href="{{ transaction.payment_url }}" class="btn-action-primary">
                         Continue to PayPal Checkout →
+                    </a>
+                </div>
+            {% elif transaction.risk_classification == 'Suspicious' and transaction.verification_status != 'VERIFIED' and transaction.verify_url %}
+                <div style="margin-top: 16px; padding: 16px; background: rgba(245, 158, 11, 0.08); border: 1px solid var(--warn-border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <strong style="color: var(--warn-color); font-size: 13.5px;">Step-Up Identity Verification Required</strong>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">This suspicious transaction requires two-factor verification before checkout can be cleared.</p>
+                    </div>
+                    <a href="{{ transaction.verify_url }}" class="btn-action-primary" style="background: linear-gradient(90deg, #f59e0b, #d97706); text-decoration: none;">
+                        <span>🔐</span> Verify Transaction →
                     </a>
                 </div>
             {% endif %}

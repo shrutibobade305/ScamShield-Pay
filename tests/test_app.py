@@ -868,3 +868,320 @@ def test_payment_success_blocks_unverified_transactions(client):
     assert b"VERIFIED-CAP-777" in succ_res2.data
 
 
+# --------------------------------------------------
+# STEP-UP VERIFICATION WORKFLOW TESTS
+# --------------------------------------------------
+
+def test_verify_page_gating(client):
+    """
+    Test access control on /verify/<tx_id>:
+    - Safe transactions redirect directly to /payment (MFA bypass)
+    - Suspicious transactions render verify.html (HTTP 200)
+    - High-Risk transactions are blocked from verification (HTTP 403)
+    """
+    # 1. Safe transaction
+    res_safe = client.post("/predict", json={
+        "amount": 50.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    safe_tx_id = res_safe.get_json()["transaction_id"]
+
+    v_safe = client.get(f"/verify/{safe_tx_id}")
+    assert v_safe.status_code == 302
+    assert f"/payment?transaction_id={safe_tx_id}" in v_safe.headers["Location"]
+
+    # 2. Suspicious transaction
+    res_susp = client.post("/predict", json={
+        "amount": 15000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+    susp_tx_id = res_susp.get_json()["transaction_id"]
+
+    v_susp = client.get(f"/verify/{susp_tx_id}")
+    assert v_susp.status_code == 200
+    assert b"Step-Up Security Verification" in v_susp.data
+    assert b"Demo Verification Simulator" in v_susp.data
+
+    # 3. High Risk transaction
+    res_high = client.post("/predict", json={
+        "amount": 85000.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 5
+    })
+    high_tx_id = res_high.get_json()["transaction_id"]
+
+    v_high = client.get(f"/verify/{high_tx_id}")
+    assert v_high.status_code == 403
+    assert b"Verification Not Permitted" in v_high.data or b"High Risk" in v_high.data
+
+
+def test_request_otp_suspicious_transaction(client):
+    """
+    Test generating an OTP challenge for a suspicious transaction:
+    - Returns JSON with success, attempts_left: 3, demo_mode: True
+    - Stored in SQLite as SHA-256 hash (never plain text)
+    """
+    res = client.post("/predict", json={
+        "amount": 12000.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 1
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    otp_res = client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+    assert otp_res.status_code == 200
+    data = otp_res.get_json()
+
+    assert data["status"] == "success"
+    assert data["attempts_left"] == 3
+    assert "demo_code" in data
+    demo_code = data["demo_code"]
+    assert len(demo_code) == 6
+    assert demo_code.isdigit()
+
+    # Check database persistence and SHA-256 hash
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        assert t.verification_status == "PENDING"
+        assert t.otp_attempts_left == 3
+        assert t.otp_code_hash is not None
+        assert t.otp_expires_at is not None
+        # Verify plain text OTP is NOT stored in database
+        assert t.otp_code_hash != demo_code
+        # Verify hash match
+        from datetime import datetime
+        import hashlib
+        assert hashlib.sha256(demo_code.encode("utf-8")).hexdigest() == t.otp_code_hash
+
+
+def test_verify_otp_attempt_limits_and_locking(client):
+    """
+    Test rate-limiting and lockout:
+    - Submitting 3 incorrect OTPs decrements attempts to 0 and locks the transaction.
+    - Locked transaction cannot request OTP or verify further.
+    """
+    res = client.post("/predict", json={
+        "amount": 14000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    # Request initial OTP
+    client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+
+    # Wrong attempt 1
+    r1 = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": "000000"})
+    assert r1.status_code == 400
+    assert r1.get_json()["attempts_left"] == 2
+
+    # Wrong attempt 2
+    r2 = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": "111111"})
+    assert r2.status_code == 400
+    assert r2.get_json()["attempts_left"] == 1
+
+    # Wrong attempt 3 (Lockout!)
+    r3 = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": "222222"})
+    assert r3.status_code == 403
+    d3 = r3.get_json()
+    assert d3["status"] == "locked"
+    assert d3["attempts_left"] == 0
+
+    # Verify locked in DB
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        assert t.verification_status == "FAILED"
+        assert t.transaction_status == "BLOCKED"
+        assert t.otp_attempts_left == 0
+
+    # Further OTP requests are blocked
+    lock_req = client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+    assert lock_req.status_code == 403
+
+
+def test_verify_otp_expiration(client):
+    """Test that expired OTPs are rejected with HTTP 400 and expired status."""
+    from datetime import datetime, timedelta
+
+    res = client.post("/predict", json={
+        "amount": 10000.0,
+        "transaction_hour": 4,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 1
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    otp_res = client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+    code = otp_res.get_json()["demo_code"]
+
+    # Manually expire the OTP in DB
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        t.otp_expires_at = datetime.utcnow() - timedelta(minutes=5)
+        db.session.commit()
+
+    ver_res = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": code})
+    assert ver_res.status_code == 400
+    assert ver_res.get_json()["status"] == "expired"
+
+
+def test_verify_otp_success_and_auditable_policy(client):
+    """
+    Test successful OTP verification:
+    - Verifies cryptographic hash
+    - Evaluates explicit auditable policy
+    - Updates transaction_status to 'APPROVED_POST_MFA', verification_status to 'VERIFIED'
+    - Updates payment_status to 'PENDING'
+    """
+    res = client.post("/predict", json={
+        "amount": 9500.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 1
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    otp_res = client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+    code = otp_res.get_json()["demo_code"]
+
+    ver_res = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": code})
+    assert ver_res.status_code == 200
+    d = ver_res.get_json()
+    assert d["status"] == "success"
+    assert d["verified"] is True
+    assert "redirect_url" in d
+
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        assert t.verification_status == "VERIFIED"
+        assert t.transaction_status == "APPROVED_POST_MFA"
+        assert t.payment_status == "PENDING"
+        assert "MFA Verified" in t.verification_notes
+
+
+def test_auditable_policy_rejects_excessive_velocity_anomaly(client):
+    """
+    Test that even if the OTP matches, the auditable policy rejects a suspicious
+    transaction if failed_attempts exceeds allowable threshold (> 5).
+    """
+    with app.app_context():
+        import secrets
+        import hashlib
+        from datetime import datetime, timedelta
+
+        tx_id = secrets.token_urlsafe(16)
+        code = "789123"
+        code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+        # Suspicious risk score but excessive prior failed attempts (6)
+        t = Transaction(
+            transaction_id=tx_id,
+            amount=8000.0,
+            currency="USD",
+            transaction_hour=3,
+            international=1,
+            new_device=1,
+            failed_attempts=6,  # Exceeds policy threshold (<= 5)
+            risk_score=55.0,
+            risk_classification="Suspicious",
+            transaction_status="UNDER_REVIEW",
+            payment_status="BLOCKED_SUSPICIOUS",
+            verification_status="PENDING",
+            otp_code_hash=code_hash,
+            otp_expires_at=datetime.utcnow() + timedelta(minutes=10),
+            otp_attempts_left=3
+        )
+        db.session.add(t)
+        db.session.commit()
+
+    ver_res = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": code})
+    assert ver_res.status_code == 403
+    d = ver_res.get_json()
+    assert d["status"] == "blocked"
+    assert d["verified"] is False
+    assert "velocity" in d["error"].lower()
+
+    with app.app_context():
+        rec = Transaction.query.filter_by(transaction_id=tx_id).first()
+        assert rec.verification_status == "FAILED"
+        assert rec.transaction_status == "BLOCKED"
+
+
+def test_post_mfa_payment_authorization_flow(client, monkeypatch):
+    """
+    Test complete lifecycle from Suspicious -> Blocked -> MFA Verified -> Payment Allowed:
+    1. Initial suspicious transaction cannot access /payment or create PayPal order.
+    2. Step-up verification succeeds.
+    3. Transaction can now access /payment and create PayPal order.
+    """
+    # Create suspicious transaction (Risk ~53.1%)
+    res = client.post("/predict", json={
+        "amount": 12000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+    data = res.get_json()
+    assert data["status"] == "Suspicious"
+    tx_id = data["transaction_id"]
+
+    # 1. Access to /payment is BLOCKED before verification
+    pay_res = client.get(f"/payment?transaction_id={tx_id}")
+    assert pay_res.status_code == 403
+
+    # Order creation is BLOCKED before verification
+    ord_res = client.post("/create-paypal-order", json={"transaction_id": tx_id})
+    assert ord_res.status_code == 403
+
+    # 2. Request OTP and verify
+    req_res = client.post("/api/verification/request-otp", json={"transaction_id": tx_id})
+    code = req_res.get_json()["demo_code"]
+
+    ver_res = client.post("/api/verification/verify-otp", json={"transaction_id": tx_id, "otp": code})
+    assert ver_res.status_code == 200
+
+    # 3. Access to /payment is now ALLOWED
+    pay_res_after = client.get(f"/payment?transaction_id={tx_id}")
+    assert pay_res_after.status_code == 200
+    assert b"Secure Payment" in pay_res_after.data
+    assert tx_id.encode() in pay_res_after.data
+
+    # Mock PayPal API to test PayPal order creation for post-MFA approved transaction
+    monkeypatch.setattr("app.get_paypal_access_token", lambda: "fake-mock-token-xyz")
+
+    class MockPayPalOrderResponse:
+        status_code = 201
+        ok = True
+        headers = {"content-type": "application/json"}
+
+        def json(self):
+            return {"id": "MOCK-MFA-ORDER-999", "status": "CREATED"}
+
+    monkeypatch.setattr("requests.post", lambda url, **kwargs: MockPayPalOrderResponse())
+
+    ord_res_after = client.post("/create-paypal-order", json={"transaction_id": tx_id})
+    assert ord_res_after.status_code == 200
+    assert ord_res_after.get_json()["id"] == "MOCK-MFA-ORDER-999"
+
+    with app.app_context():
+        rec = Transaction.query.filter_by(transaction_id=tx_id).first()
+        assert rec.paypal_order_id == "MOCK-MFA-ORDER-999"
+        assert rec.payment_status == "PENDING"
+
+
+

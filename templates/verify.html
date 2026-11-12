@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step-Up Identity Verification | ScamShield Pay</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        :root {
+            --bg-page: #080d18;
+            --bg-card: #121a2d;
+            --bg-subcard: #182238;
+            --border: #24324a;
+            --border-light: #334466;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --warn: #f59e0b;
+            --warn-bg: rgba(245, 158, 11, 0.12);
+            --warn-border: rgba(245, 158, 11, 0.35);
+            --safe: #10b981;
+            --safe-bg: rgba(16, 185, 129, 0.12);
+            --safe-border: rgba(16, 185, 129, 0.35);
+            --danger: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.12);
+            --danger-border: rgba(239, 68, 68, 0.35);
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .verify-wrapper {
+            max-width: 680px;
+            width: calc(100% - 32px);
+            margin: 40px auto 60px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            padding: 36px 32px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55);
+            position: relative;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .verify-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #f59e0b, #6366f1);
+        }
+
+        .verify-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .verify-icon-wrap {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            margin-bottom: 16px;
+        }
+
+        .verify-title {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin: 0 0 8px;
+            color: #fff;
+        }
+
+        .verify-subtitle {
+            color: var(--text-muted);
+            font-size: 14.5px;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        /* Transaction Context Strip */
+        .tx-strip {
+            background: var(--bg-subcard);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 24px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            text-align: center;
+        }
+
+        .tx-strip-cell-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .tx-strip-cell-val {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* Demo Mode Alert Card */
+        .demo-mode-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(245, 158, 11, 0.12));
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 14px;
+            padding: 18px 20px;
+            margin-bottom: 26px;
+            text-align: left;
+        }
+
+        .demo-mode-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .demo-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(99, 102, 241, 0.25);
+            border: 1px solid rgba(99, 102, 241, 0.45);
+            color: #c7d2fe;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .demo-code-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #0b1120;
+            border: 1px dashed rgba(99, 102, 241, 0.5);
+            border-radius: 10px;
+            padding: 10px 16px;
+            margin-top: 10px;
+        }
+
+        .demo-code-text {
+            font-family: var(--font-mono);
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 4px;
+            color: #a5b4fc;
+        }
+
+        .btn-autofill {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-autofill:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        /* Indicators Accordion / Summary */
+        .indicators-summary {
+            background: rgba(245, 158, 11, 0.06);
+            border: 1px solid var(--warn-border);
+            border-radius: 12px;
+            padding: 14px 18px;
+            margin-bottom: 26px;
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            text-align: left;
+        }
+
+        .indicators-summary strong {
+            color: var(--warn);
+        }
+
+        .indicators-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .ind-tag {
+            font-size: 11.5px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(245, 158, 11, 0.15);
+            color: #fde68a;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        /* OTP Input Form */
+        .otp-form-wrap {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .otp-inputs-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .otp-digit-input {
+            width: 48px;
+            height: 56px;
+            background: #0a1120;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 26px;
+            font-weight: 800;
+            color: #fff;
+            outline: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .otp-digit-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .otp-meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 10px;
+            padding: 0 4px;
+        }
+
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+        }
+
+        .timer-warning {
+            color: var(--warn);
+        }
+
+        /* Feedback Banners */
+        .feedback-banner {
+            padding: 14px 18px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 13.5px;
+            line-height: 1.5;
+            display: none;
+            text-align: left;
+        }
+
+        .banner-error {
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-border);
+            color: #fca5a5;
+        }
+
+        .banner-success {
+            background: var(--safe-bg);
+            border: 1px solid var(--safe-border);
+            color: #86efac;
+        }
+
+        /* Action Buttons */
+        .btn-verify-submit {
+            width: 100%;
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+            color: #fff;
+            border: none;
+            padding: 15px 24px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-verify-submit:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(245, 158, 11, 0.5);
+        }
+
+        .btn-verify-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-resend-wrap {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        .btn-resend {
+            background: transparent;
+            color: #a5b4fc;
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: underline;
+            transition: color 0.2s;
+        }
+
+        .btn-resend:hover:not(:disabled) {
+            color: #fff;
+        }
+
+        .btn-resend:disabled {
+            color: var(--text-dim);
+            cursor: not-allowed;
+            text-decoration: none;
+        }
+
+        .footer-links {
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .footer-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover {
+            color: #fff;
+        }
+
+        /* Shake Animation */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-8px); }
+            40%, 80% { transform: translateX(8px); }
+        }
+
+        .shake {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @media (max-width: 580px) {
+            .verify-wrapper {
+                padding: 24px 18px;
+                margin: 20px auto;
+            }
+
+            .tx-strip {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .otp-digit-input {
+                width: 40px;
+                height: 48px;
+                font-size: 22px;
+            }
+
+            .otp-inputs-row {
+                gap: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navbar -->
+    <header class="navbar">
+        <div class="logo">🛡️ ScamShield Pay</div>
+        <nav>
+            <a href="/">Home</a>
+            <a href="{{ url_for('transactions_history') }}">Transactions</a>
+            <a href="{{ url_for('dashboard') }}" class="nav-admin-link">📊 Admin Dashboard</a>
+        </nav>
+    </header>
+
+    <div class="verify-wrapper">
+
+        <!-- Top Header -->
+        <div class="verify-header">
+            <div class="verify-icon-wrap">🛡️</div>
+            <h1 class="verify-title">Step-Up Security Verification</h1>
+            <p class="verify-subtitle">
+                Secondary authentication required to authorize this transaction under ScamShield operational risk policy.
+            </p>
+        </div>
+
+        <!-- Transaction Context Strip -->
+        <div class="tx-strip">
+            <div>
+                <div class="tx-strip-cell-label">Payment Amount</div>
+                <div class="tx-strip-cell-val" style="color: #4ade80;">
+                    ${{ "%.2f"|format(transaction.amount) }} {{ transaction.currency }}
+                </div>
+            </div>
+            <div>
+                <div class="tx-strip-cell-label">Assessed Risk Score</div>
+                <div class="tx-strip-cell-val" style="color: var(--warn); font-family: var(--font-mono);">
+                    {{ "%.2f"|format(transaction.risk_score) }}%
+                </div>
+            </div>
+            <div>
+                <div class="tx-strip-cell-label">Security Tier</div>
+                <div class="tx-strip-cell-val" style="color: var(--warn);">
+                    Suspicious
+                </div>
+            </div>
+        </div>
+
+        <!-- Indicators Explanation -->
+        <div class="indicators-summary">
+            <strong>⚠️ Why is verification required?</strong>
+            This payment triggered moderate behavioral risk indicators (Risk: {{ "%.2f"|format(transaction.risk_score) }}%). To protect the account from unauthorized takeover, a step-up OTP challenge must be successfully validated before payment can proceed.
+            {% if indicators %}
+            <div class="indicators-tags">
+                {% for ind in indicators %}
+                    {% if ind.level in ('warning', 'critical') %}
+                    <span class="ind-tag">{{ ind.icon }} {{ ind.title }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Demo Mode Box (Clearly Labeled Demo Verification Simulator) -->
+        <div id="demo-mode-card" class="demo-mode-card" style="display: none;">
+            <div class="demo-mode-top">
+                <span class="demo-pill">🧪 Demo Verification Simulator</span>
+                <span style="font-size: 11px; color: var(--text-dim);">Hackathon Sandbox Mode</span>
+            </div>
+            <p style="margin: 0; font-size: 12.5px; color: #cbd5e1; line-height: 1.45;">
+                In this demonstration environment, cellular SMS is simulated. The server-generated 6-digit one-time passcode (OTP) is displayed below:
+            </p>
+            <div class="demo-code-box">
+                <span class="demo-code-text" id="demo-code-display">------</span>
+                <button type="button" class="btn-autofill" onclick="autoFillDemoCode()">
+                    Auto-Fill Code ⚡
+                </button>
+            </div>
+        </div>
+
+        <!-- Feedback Messages -->
+        <div id="banner-error" class="feedback-banner banner-error"></div>
+        <div id="banner-success" class="feedback-banner banner-success"></div>
+
+        <!-- Verification Form -->
+        <form id="otp-form" onsubmit="event.preventDefault(); submitVerification();" class="otp-form-wrap">
+            <label style="font-size: 13px; font-weight: 600; color: #e2e8f0; display: block;">
+                Enter 6-Digit One-Time Security Code:
+            </label>
+
+            <div class="otp-inputs-row" id="otp-inputs-container">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="0" autofocus pattern="[0-9]" inputmode="numeric" autocomplete="one-time-code">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="1" pattern="[0-9]" inputmode="numeric">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="2" pattern="[0-9]" inputmode="numeric">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="3" pattern="[0-9]" inputmode="numeric">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="4" pattern="[0-9]" inputmode="numeric">
+                <input type="text" maxlength="1" class="otp-digit-input" data-index="5" pattern="[0-9]" inputmode="numeric">
+            </div>
+
+            <div class="otp-meta-row">
+                <span class="meta-pill" id="timer-display">⏱️ Code expires in <strong>10:00</strong></span>
+                <span class="meta-pill" id="attempts-display">🔐 Attempts left: <strong>{{ attempts_left }}</strong></span>
+            </div>
+
+            <div style="margin-top: 24px;">
+                <button type="submit" id="btn-submit" class="btn-verify-submit">
+                    <span>🔐</span> Verify Code &amp; Clear Transaction
+                </button>
+            </div>
+
+            <div class="btn-resend-wrap">
+                <button type="button" id="btn-resend" class="btn-resend" onclick="requestNewCode()">
+                    Didn't receive code? Request a new OTP
+                </button>
+            </div>
+        </form>
+
+        <div class="footer-links">
+            <a href="/">← Return to ScamShield Home</a>
+            <span style="color: var(--text-dim); font-size: 11.5px; font-family: var(--font-mono);">
+                ID: {{ transaction.transaction_id[:16] }}...
+            </span>
+            <a href="{{ url_for('dashboard') }}">Admin Dashboard →</a>
+        </div>
+
+    </div>
+
+    <script>
+        const TX_ID = {{ transaction.transaction_id | tojson }};
+        let countdownSeconds = 600;
+        let countdownTimer = null;
+        let cachedDemoCode = "";
+
+        const inputs = Array.from(document.querySelectorAll('.otp-digit-input'));
+        const submitBtn = document.getElementById('btn-submit');
+        const resendBtn = document.getElementById('btn-resend');
+        const errBanner = document.getElementById('banner-error');
+        const succBanner = document.getElementById('banner-success');
+        const demoCard = document.getElementById('demo-mode-card');
+        const demoDisplay = document.getElementById('demo-code-display');
+        const timerDisplay = document.getElementById('timer-display');
+        const attemptsDisplay = document.getElementById('attempts-display');
+        const inputsContainer = document.getElementById('otp-inputs-container');
+
+        // Setup individual digit navigation
+        inputs.forEach((input, idx) => {
+            input.addEventListener('input', (e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                e.target.value = val ? val[0] : '';
+                if (val && idx < inputs.length - 1) {
+                    inputs[idx + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+                    inputs[idx - 1].focus();
+                } else if (e.key === 'ArrowLeft' && idx > 0) {
+                    inputs[idx - 1].focus();
+                } else if (e.key === 'ArrowRight' && idx < inputs.length - 1) {
+                    inputs[idx + 1].focus();
+                }
+            });
+
+            input.addEventListener('paste', (e) => {
+                e.preventDefault();
+                const pasted = (e.clipboardData || window.clipboardData).getData('text').trim();
+                const digits = pasted.replace(/[^0-9]/g, '').slice(0, 6);
+                digits.split('').forEach((d, i) => {
+                    if (inputs[i]) inputs[i].value = d;
+                });
+                if (digits.length === 6) {
+                    inputs[5].focus();
+                }
+            });
+        });
+
+        function getEnteredCode() {
+            return inputs.map(i => i.value.trim()).join('');
+        }
+
+        function showError(msg) {
+            succBanner.style.display = 'none';
+            errBanner.textContent = msg;
+            errBanner.style.display = 'block';
+            inputsContainer.classList.add('shake');
+            setTimeout(() => inputsContainer.classList.remove('shake'), 450);
+        }
+
+        function showSuccess(msg) {
+            errBanner.style.display = 'none';
+            succBanner.innerHTML = msg;
+            succBanner.style.display = 'block';
+        }
+
+        function startTimer(duration) {
+            if (countdownTimer) clearInterval(countdownTimer);
+            countdownSeconds = duration;
+            updateTimerDisplay();
+
+            countdownTimer = setInterval(() => {
+                countdownSeconds--;
+                updateTimerDisplay();
+                if (countdownSeconds <= 0) {
+                    clearInterval(countdownTimer);
+                    showError("Verification code has expired. Please request a new OTP.");
+                    submitBtn.disabled = true;
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const m = Math.floor(Math.max(0, countdownSeconds) / 60);
+            const s = Math.max(0, countdownSeconds) % 60;
+            const formatted = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            timerDisplay.innerHTML = `⏱️ Code expires in <strong class="${countdownSeconds < 60 ? 'timer-warning' : ''}">${formatted}</strong>`;
+        }
+
+        // Request an initial OTP upon load
+        async function requestNewCode() {
+            errBanner.style.display = 'none';
+            resendBtn.disabled = true;
+            resendBtn.textContent = 'Generating code...';
+
+            try {
+                const res = await fetch('/api/verification/request-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ transaction_id: TX_ID })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    if (data.status === 'locked') {
+                        lockdownForm(data.error);
+                        return;
+                    }
+                    showError(data.error || 'Failed to generate verification code.');
+                    return;
+                }
+
+                if (data.status === 'already_verified') {
+                    showSuccess("🎉 This transaction has already been verified! Redirecting to checkout...");
+                    setTimeout(() => window.location.href = data.redirect_url, 1200);
+                    return;
+                }
+
+                // Handle Demo Mode
+                if (data.demo_mode && data.demo_code) {
+                    cachedDemoCode = data.demo_code;
+                    demoDisplay.textContent = data.demo_code;
+                    demoCard.style.display = 'block';
+                } else {
+                    demoCard.style.display = 'none';
+                }
+
+                attemptsDisplay.innerHTML = `🔐 Attempts left: <strong>${data.attempts_left || 3}</strong>`;
+                startTimer(data.expires_in_seconds || 600);
+                submitBtn.disabled = false;
+                inputs.forEach(i => { i.value = ''; i.disabled = false; });
+                inputs[0].focus();
+
+            } catch (err) {
+                console.error(err);
+                showError('Network error requesting verification code. Please check your connection.');
+            } finally {
+                resendBtn.disabled = false;
+                resendBtn.textContent = "Didn't receive code? Request a new OTP";
+            }
+        }
+
+        function autoFillDemoCode() {
+            if (!cachedDemoCode) return;
+            cachedDemoCode.split('').forEach((d, i) => {
+                if (inputs[i]) inputs[i].value = d;
+            });
+            inputs[5].focus();
+        }
+
+        async function submitVerification() {
+            const code = getEnteredCode();
+            if (code.length !== 6) {
+                showError('Please enter all 6 digits of the verification code.');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>⏳</span> Verifying against operational policy...';
+            errBanner.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/verification/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transaction_id: TX_ID,
+                        otp: code
+                    })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.verified) {
+                    clearInterval(countdownTimer);
+                    inputs.forEach(i => i.disabled = true);
+                    submitBtn.style.display = 'none';
+                    resendBtn.style.display = 'none';
+
+                    showSuccess(`
+                        <div style="font-weight: 800; font-size: 15px; margin-bottom: 4px;">
+                            🎉 Secondary Authentication Passed!
+                        </div>
+                        <div>${data.message || 'Identity verified. Risk re-evaluation policy satisfied.'}</div>
+                        <div style="margin-top: 12px;">
+                            <a href="${data.redirect_url}" class="btn-verify-submit" style="background: linear-gradient(90deg, #10b981, #059669); text-decoration: none; padding: 12px 20px;">
+                                Continue to PayPal Sandbox Checkout →
+                            </a>
+                        </div>
+                    `);
+
+                    // Automatically forward after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = data.redirect_url;
+                    }, 2200);
+
+                } else {
+                    if (data.status === 'locked' || (data.attempts_left !== undefined && data.attempts_left <= 0)) {
+                        lockdownForm(data.error || 'Maximum verification attempts exceeded. Transaction locked.');
+                    } else {
+                        showError(data.error || 'Invalid verification code.');
+                        if (data.attempts_left !== undefined) {
+                            attemptsDisplay.innerHTML = `🔐 Attempts left: <strong style="color: var(--danger);">${data.attempts_left}</strong>`;
+                        }
+                        inputs.forEach(i => i.value = '');
+                        inputs[0].focus();
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = '<span>🔐</span> Verify Code &amp; Clear Transaction';
+                    }
+                }
+
+            } catch (err) {
+                console.error(err);
+                showError('Network error while verifying OTP code.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>🔐</span> Verify Code &amp; Clear Transaction';
+            }
+        }
+
+        function lockdownForm(msg) {
+            clearInterval(countdownTimer);
+            inputs.forEach(i => i.disabled = true);
+            submitBtn.disabled = true;
+            submitBtn.style.display = 'none';
+            resendBtn.style.display = 'none';
+            demoCard.style.display = 'none';
+            attemptsDisplay.innerHTML = `🔐 Attempts left: <strong style="color: var(--danger);">0 (LOCKED)</strong>`;
+            showError(`🚨 ${msg}`);
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            requestNewCode();
+        });
+    </script>
+</body>
+</html>

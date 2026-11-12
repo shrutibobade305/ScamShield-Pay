@@ -559,7 +559,7 @@
                 </div>
             </div>
 
-            <!-- Action Controls (Strict Payment Gating) -->
+            <!-- Action Controls (Strict Payment Gating & Step-Up Security) -->
             <div class="action-container">
                 {% if result.decision == "approved" %}
                     <a href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
@@ -573,7 +573,42 @@
                     <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
                         📊 Admin Dashboard
                     </a>
+                {% elif result.decision == "review" %}
+                    <!-- Step-Up Verification Challenge Box -->
+                    <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 22px; margin-bottom: 22px; text-align: left;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                            <span style="font-size: 24px;">🛡️</span>
+                            <div>
+                                <strong style="color: #fbbf24; font-size: 16px; display: block;">Step-Up Security Verification Required</strong>
+                                <span style="font-size: 12px; color: #94a3b8;">Two-Factor Authentication (MFA) &amp; Operational Policy Re-evaluation</span>
+                            </div>
+                        </div>
+                        <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0 0 16px;">
+                            This transaction was flagged with moderate fraud indicators (35%–70% risk tier). To protect your funds against unauthorized checkout, checkout is held pending secondary identity verification. You may complete the verification challenge below to re-evaluate payment eligibility.
+                        </p>
+                        <a href="{{ url_for('verify_transaction', transaction_id=result.transaction_id) }}"
+                           class="btn-primary"
+                           style="background: linear-gradient(90deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.4); display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px;">
+                            <span>🔐</span> Proceed to Step-Up Security Verification →
+                        </a>
+                    </div>
+                    <a href="{{ url_for('index') }}" class="btn-secondary">
+                        ← Try Another Transaction
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                        📊 Admin Dashboard
+                    </a>
                 {% else %}
+                    <!-- High Risk: Strictly Blocked -->
+                    <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 14px; padding: 20px; margin-bottom: 22px; text-align: left;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <span style="font-size: 24px;">🛑</span>
+                            <strong style="color: #f87171; font-size: 16px;">Payment Processing Prohibited</strong>
+                        </div>
+                        <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0;">
+                            This transaction has been permanently blocked due to high-risk fraud indicators (≥ 70%). For account security and anti-fraud protection, secondary verification is not permitted and payment order creation is strictly denied.
+                        </p>
+                    </div>
                     <a href="{{ url_for('index') }}" class="btn-secondary">
                         ← Try Another Transaction
                     </a>

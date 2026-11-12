@@ -815,6 +815,8 @@
                                 <td>
                                     {% if tx.transaction_status == 'APPROVED' %}
                                         <span class="status-badge status-approved">Approved</span>
+                                    {% elif tx.transaction_status == 'APPROVED_POST_MFA' %}
+                                        <span class="status-badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">MFA Approved</span>
                                     {% elif tx.transaction_status == 'UNDER_REVIEW' %}
                                         <span class="status-badge status-review">Under Review</span>
                                     {% elif tx.transaction_status == 'BLOCKED' %}
@@ -841,6 +843,11 @@
                                     {% endif %}
                                 </td>
                                 <td style="text-align: right; white-space: nowrap;">
+                                    {% if tx.risk_classification == 'Suspicious' and tx.verification_status != 'VERIFIED' %}
+                                        <a href="{{ url_for('verify_transaction', transaction_id=tx.transaction_id) }}" class="btn-table-action" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); margin-right: 6px;" title="Step-Up MFA Verification">
+                                            Verify 🔐
+                                        </a>
+                                    {% endif %}
                                     <button type="button" class="btn-table-action" onclick="openModal('{{ tx.transaction_id }}')" title="Quick Preview">
                                         Inspect 🔍
                                     </button>

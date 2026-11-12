@@ -39,8 +39,16 @@ class Transaction(db.Model):
     risk_score = db.Column(db.Float, nullable=False)
     risk_classification = db.Column(db.String(32), nullable=False)  # 'Safe', 'Suspicious', 'High Risk'
 
-    # Transaction decision status ('APPROVED', 'UNDER_REVIEW', 'BLOCKED', 'COMPLETED')
+    # Transaction decision status ('APPROVED', 'UNDER_REVIEW', 'APPROVED_POST_MFA', 'BLOCKED', 'COMPLETED')
     transaction_status = db.Column(db.String(32), nullable=False)
+
+    # Secondary Step-Up Verification (MFA)
+    verification_status = db.Column(db.String(32), default="NONE", nullable=False)  # 'NONE', 'PENDING', 'VERIFIED', 'FAILED', 'EXPIRED'
+    otp_code_hash = db.Column(db.String(128), nullable=True)  # SHA-256 hash of OTP code (never plain text)
+    otp_expires_at = db.Column(db.DateTime, nullable=True)
+    otp_attempts_left = db.Column(db.Integer, default=3, nullable=False)
+    otp_requested_at = db.Column(db.DateTime, nullable=True)
+    verification_notes = db.Column(db.String(255), nullable=True)
 
     # PayPal checkout tracking
     paypal_order_id = db.Column(db.String(64), nullable=True, index=True)
@@ -66,6 +74,9 @@ class Transaction(db.Model):
             "risk_score": self.risk_score,
             "risk_classification": self.risk_classification,
             "transaction_status": self.transaction_status,
+            "verification_status": self.verification_status,
+            "otp_attempts_left": self.otp_attempts_left,
+            "verification_notes": self.verification_notes,
             "paypal_order_id": self.paypal_order_id,
             "paypal_capture_id": self.paypal_capture_id,
             "payment_status": self.payment_status,
