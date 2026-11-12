@@ -145,7 +145,7 @@ def is_valid_paypal_order_id(order_id):
     if not isinstance(order_id, str):
         return False
     clean_id = order_id.strip()
-    return bool(re.match(r"^[A-Z0-9]{10,32}$", clean_id))
+    return bool(re.match(r"^[A-Za-z0-9_-]{10,64}$", clean_id))
 
 
 TRANSACTION_EXPIRATION_HOURS = 3
@@ -1208,6 +1208,12 @@ def create_paypal_order():
         if transaction.paypal_order_id:
             return jsonify({"id": transaction.paypal_order_id})
 
+        if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+            logger.warning("PayPal credentials not configured when creating order for tx %s", transaction.transaction_id)
+            return jsonify({
+                "error": "PayPal credentials are not configured on the server. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env."
+            }), 503
+
         access_token = get_paypal_access_token()
         formatted_amount = f"{transaction.amount:.2f}"
 
@@ -1370,6 +1376,12 @@ def capture_paypal_order():
                 transaction.transaction_id
             )
             return jsonify({"error": "Order ID mismatch with database record."}), 400
+
+        if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+            logger.warning("PayPal credentials not configured when capturing order %s for tx %s", raw_order_id, transaction.transaction_id)
+            return jsonify({
+                "error": "PayPal credentials are not configured on the server. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET in .env."
+            }), 503
 
         access_token = get_paypal_access_token()
 
@@ -2479,7 +2491,36 @@ def transaction_detail(transaction_id):
 
 
 # --------------------------------------------------
-# 10. RUN APPLICATION
+# 10. ERROR HANDLERS (404, 500)
+# --------------------------------------------------
+
+@app.errorhandler(404)
+def handle_404(err):
+    """Custom 404 handler returning branded error template or JSON."""
+    if request.is_json or request.path.startswith("/api/"):
+        return jsonify({"error": "Resource not found", "status": "error"}), 404
+    return render_template("result.html", result={
+        "status": "404 - Not Found",
+        "decision": "error",
+        "message": "The requested page or endpoint does not exist on ScamShield Pay."
+    }), 404
+
+
+@app.errorhandler(500)
+def handle_500(err):
+    """Custom 500 handler returning branded error template or JSON."""
+    logger.exception("Internal server error: %s", err)
+    if request.is_json or request.path.startswith("/api/"):
+        return jsonify({"error": "Internal server error", "status": "error"}), 500
+    return render_template("result.html", result={
+        "status": "500 - Server Error",
+        "decision": "error",
+        "message": "An unexpected server error occurred. Please try again or check application logs."
+    }), 500
+
+
+# --------------------------------------------------
+# 11. RUN APPLICATION
 # --------------------------------------------------
 
 if __name__ == "__main__":
