@@ -236,7 +236,7 @@
                 // Capture payment after buyer approval
                 onApprove: async function (data) {
                     try {
-                        showMessage("Verifying and processing your payment...", "loading");
+                        showMessage("Verifying and processing your payment with ScamShield backend...", "loading");
                         paymentStatus.textContent = "Processing";
 
                         const response = await fetch("/capture-paypal-order", {
@@ -252,13 +252,13 @@
 
                         const result = await response.json();
 
-                        if (!response.ok || result.status !== "COMPLETED") {
+                        if (!response.ok || result.status !== "COMPLETED" || !result.capture_id) {
                             throw new Error(result.error || "Payment verification failed.");
                         }
 
                         paymentStatus.textContent = "Completed";
                         showMessage(
-                            "Payment successful! Your transaction has been securely completed.",
+                            "Payment verified! PayPal Capture ID: " + result.capture_id + ". Redirecting to receipt...",
                             "success"
                         );
 
@@ -266,7 +266,7 @@
 
                         setTimeout(() => {
                             window.location.href = successUrl + "?transaction_id=" + encodeURIComponent(transactionId);
-                        }, 2000);
+                        }, 1800);
 
                     } catch (error) {
                         paymentStatus.textContent = "Verification Failed";
@@ -275,22 +275,51 @@
                 },
 
                 // Buyer cancels payment
-                onCancel: function () {
+                onCancel: async function (data) {
                     paymentStatus.textContent = "Cancelled";
                     showMessage(
                         "You cancelled the PayPal payment. No funds were transferred.",
                         "error"
                     );
+
+                    try {
+                        await fetch("/cancel-paypal-order", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                transaction_id: transactionId
+                            })
+                        });
+                    } catch (err) {
+                        console.warn("Could not notify server of cancellation:", err);
+                    }
                 },
 
                 // PayPal SDK error
-                onError: function (error) {
+                onError: async function (error) {
                     console.error("PayPal error:", error);
                     paymentStatus.textContent = "Failed";
                     showMessage(
                         "An error occurred with PayPal. Please try again or refresh the page.",
                         "error"
                     );
+
+                    try {
+                        await fetch("/fail-paypal-order", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                transaction_id: transactionId,
+                                error: String(error)
+                            })
+                        });
+                    } catch (err) {
+                        console.warn("Could not notify server of payment failure:", err);
+                    }
                 }
 
             }).render("#paypal-button-container");

@@ -662,3 +662,209 @@ def test_transaction_detail_page_and_json(client):
     assert client.get("/transactions/nonexistent_1234567890").status_code == 404
 
 
+# --------------------------------------------------
+# PAYPAL PAYMENT SECURITY AUDIT TESTS
+# --------------------------------------------------
+
+def test_create_paypal_order_blocks_suspicious_and_high_risk(client):
+    """Verify that Suspicious and High-Risk transactions cannot create PayPal orders (HTTP 403)."""
+    # 1. Suspicious transaction
+    susp_res = client.post("/predict", json={
+        "amount": 12000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+    susp_tx_id = susp_res.get_json()["transaction_id"]
+
+    order_susp = client.post("/create-paypal-order", json={"transaction_id": susp_tx_id})
+    assert order_susp.status_code == 403
+    assert "blocked" in order_susp.get_json()["error"].lower()
+
+    # 2. High-Risk transaction
+    danger_res = client.post("/predict", json={
+        "amount": 35000.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 5
+    })
+    danger_tx_id = danger_res.get_json()["transaction_id"]
+
+    order_danger = client.post("/create-paypal-order", json={"transaction_id": danger_tx_id})
+    assert order_danger.status_code == 403
+    assert "blocked" in order_danger.get_json()["error"].lower()
+
+
+def test_create_paypal_order_missing_or_expired_transaction(client):
+    """Verify 404 for missing transaction and 410 for expired transaction."""
+    # Missing transaction
+    res_missing = client.post("/create-paypal-order", json={"transaction_id": "nonexistent_tx_1234567890"})
+    assert res_missing.status_code == 404
+
+    # Expired transaction (> 3 hours old)
+    safe_res = client.post("/predict", json={
+        "amount": 30.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id = safe_res.get_json()["transaction_id"]
+
+    from datetime import datetime, timedelta
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        t.created_at = datetime.utcnow() - timedelta(hours=4)
+        db.session.commit()
+
+    order_expired = client.post("/create-paypal-order", json={"transaction_id": tx_id})
+    assert order_expired.status_code == 410
+    assert "expired" in order_expired.get_json()["error"].lower()
+
+
+def test_capture_paypal_order_blocks_unsafe_and_mismatched(client):
+    """Verify that capture rejects non-safe transactions and mismatched order IDs."""
+    # 1. Block capture for Suspicious transaction
+    susp_res = client.post("/predict", json={
+        "amount": 8000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+    susp_tx_id = susp_res.get_json()["transaction_id"]
+
+    cap_susp = client.post("/capture-paypal-order", json={
+        "transaction_id": susp_tx_id,
+        "orderID": "5C123456789012345"
+    })
+    assert cap_susp.status_code == 403
+
+    # 2. Block capture with invalid order ID format
+    safe_res = client.post("/predict", json={
+        "amount": 20.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    safe_tx_id = safe_res.get_json()["transaction_id"]
+
+    cap_invalid_id = client.post("/capture-paypal-order", json={
+        "transaction_id": safe_tx_id,
+        "orderID": "short!"
+    })
+    assert cap_invalid_id.status_code == 400
+
+
+def test_capture_paypal_order_idempotency_prevents_duplicate_charge(client):
+    """
+    Verify that if a transaction is already COMPLETED, calling /capture-paypal-order
+    returns the existing capture ID with HTTP 200 without issuing duplicate charges.
+    """
+    res = client.post("/predict", json={
+        "amount": 50.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    # Mark as completed in SQLite
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        t.payment_status = "COMPLETED"
+        t.transaction_status = "COMPLETED"
+        t.paypal_order_id = "5C987654321012345"
+        t.paypal_capture_id = "TEST-CAPTURE-ID-999"
+        db.session.commit()
+
+    # Second capture attempt
+    dup_res = client.post("/capture-paypal-order", json={
+        "transaction_id": tx_id,
+        "orderID": "5C987654321012345"
+    })
+    assert dup_res.status_code == 200
+    dup_data = dup_res.get_json()
+    assert dup_data["status"] == "COMPLETED"
+    assert dup_data["capture_id"] == "TEST-CAPTURE-ID-999"
+    assert dup_data.get("idempotent") is True
+
+
+def test_cancel_and_fail_paypal_order_endpoints(client):
+    """Test /cancel-paypal-order and /fail-paypal-order lifecycle hooks."""
+    # Cancel endpoint
+    res1 = client.post("/predict", json={
+        "amount": 40.0,
+        "transaction_hour": 12,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id1 = res1.get_json()["transaction_id"]
+
+    cancel_res = client.post("/cancel-paypal-order", json={"transaction_id": tx_id1})
+    assert cancel_res.status_code == 200
+    assert cancel_res.get_json()["status"] == "CANCELLED"
+
+    with app.app_context():
+        rec1 = Transaction.query.filter_by(transaction_id=tx_id1).first()
+        assert rec1.payment_status == "CANCELLED"
+
+    # Fail endpoint
+    res2 = client.post("/predict", json={
+        "amount": 40.0,
+        "transaction_hour": 12,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id2 = res2.get_json()["transaction_id"]
+
+    fail_res = client.post("/fail-paypal-order", json={
+        "transaction_id": tx_id2,
+        "error": "Card declined in PayPal Sandbox"
+    })
+    assert fail_res.status_code == 200
+    assert fail_res.get_json()["status"] == "FAILED"
+
+    with app.app_context():
+        rec2 = Transaction.query.filter_by(transaction_id=tx_id2).first()
+        assert rec2.payment_status == "FAILED"
+
+
+def test_payment_success_blocks_unverified_transactions(client):
+    """
+    Verify that /payment/success strictly blocks any transaction that has NOT
+    been verified as COMPLETED on the server.
+    """
+    res = client.post("/predict", json={
+        "amount": 60.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    # Transaction is PENDING (not captured)
+    succ_res = client.get(f"/payment/success?transaction_id={tx_id}")
+    assert succ_res.status_code == 400
+    assert b"Payment Not Completed" in succ_res.data
+
+    # Now verify that once COMPLETED, it renders successfully
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=tx_id).first()
+        t.payment_status = "COMPLETED"
+        t.paypal_capture_id = "VERIFIED-CAP-777"
+        db.session.commit()
+
+    succ_res2 = client.get(f"/payment/success?transaction_id={tx_id}")
+    assert succ_res2.status_code == 200
+    assert b"Payment Successful" in succ_res2.data
+    assert b"VERIFIED-CAP-777" in succ_res2.data
+
+

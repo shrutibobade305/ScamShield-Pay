@@ -109,6 +109,25 @@ def is_valid_transaction_id(tx_id):
     return bool(re.match(r"^[A-Za-z0-9_-]{10,64}$", clean_id))
 
 
+def is_valid_paypal_order_id(order_id):
+    """Validates that a PayPal order ID is a well-formed token."""
+    if not isinstance(order_id, str):
+        return False
+    clean_id = order_id.strip()
+    return bool(re.match(r"^[A-Z0-9]{10,32}$", clean_id))
+
+
+TRANSACTION_EXPIRATION_HOURS = 3
+
+
+def is_transaction_expired(transaction):
+    """Checks whether a transaction has exceeded its checkout validity window."""
+    if not transaction or not transaction.created_at:
+        return False
+    age = datetime.utcnow() - transaction.created_at
+    return age > timedelta(hours=TRANSACTION_EXPIRATION_HOURS)
+
+
 def analyze_risk_indicators(amount, transaction_hour, international, new_device, failed_attempts):
     """
     Evaluates observable transaction attributes against standard operational security heuristics.
@@ -542,7 +561,7 @@ def predict():
 def payment():
     """
     Renders PayPal payment screen ONLY for transactions verified as Safe in the database.
-    Rejects missing, unapproved, suspicious, high-risk, or already completed transactions.
+    Rejects missing, unapproved, suspicious, high-risk, expired, or already completed transactions.
     """
     raw_tx_id = (request.args.get("transaction_id") or "").strip()
 
@@ -577,12 +596,26 @@ def payment():
             "message": "This transaction does not exist in the database or has expired."
         }), 404
 
-    # Strict Database Gating: Only Safe & APPROVED transactions are allowed to pay
-    if transaction.risk_classification != "Safe" or transaction.transaction_status != "APPROVED":
+    # Expiration check
+    if is_transaction_expired(transaction):
+        if transaction.payment_status not in ("COMPLETED", "EXPIRED"):
+            try:
+                transaction.payment_status = "EXPIRED"
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+        return render_template("result.html", result={
+            "status": "Transaction Expired",
+            "decision": "error",
+            "message": "This transaction assessment has expired (validity window: 3 hours). Please submit a new transaction analysis."
+        }), 410
+
+    # Strict Server-Side Gating: Only Safe (<35% risk) and APPROVED transactions can pay
+    if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
         return render_template("result.html", result={
             "status": "Payment Disallowed",
             "decision": "error",
-            "message": f"This transaction was evaluated as '{transaction.risk_classification}' (Risk: {transaction.risk_score:.2f}%). Payment is not authorized."
+            "message": f"This transaction was evaluated as '{transaction.risk_classification}' (Risk: {transaction.risk_score:.2f}%). Payment processing is strictly blocked."
         }), 403
 
     if transaction.payment_status == "COMPLETED":
@@ -624,7 +657,17 @@ def payment():
 
 @app.route("/create-paypal-order", methods=["POST"])
 def create_paypal_order():
-    """Creates a PayPal order via PayPal Orders v2 API for an approved transaction stored in the DB."""
+    """
+    Creates a PayPal order via PayPal Orders v2 API for an approved transaction stored in SQLite.
+    Security Validations:
+    - Verifies transaction exists in SQLite
+    - Verifies server-side risk classification is Safe (risk_score < 35.0, APPROVED)
+    - Blocks Suspicious and High-Risk transactions (HTTP 403)
+    - Validates transaction is not expired, cancelled, failed, or already completed
+    - Ignores all frontend-supplied amounts/risks/currencies
+    - Attaches reference_id and custom_id to tie PayPal order directly to transaction_id
+    - Persists order ID to SQLite
+    """
     try:
         data = request.get_json(silent=True) or {}
         raw_tx_id = (data.get("transaction_id") or "").strip()
@@ -644,27 +687,53 @@ def create_paypal_order():
         if not transaction:
             return jsonify({"error": "Invalid or expired transaction."}), 404
 
-        if transaction.risk_classification != "Safe" or transaction.transaction_status != "APPROVED":
-            return jsonify({"error": "Transaction is not authorized for payment."}), 403
+        # Expiration validation
+        if is_transaction_expired(transaction):
+            if transaction.payment_status not in ("COMPLETED", "EXPIRED"):
+                try:
+                    transaction.payment_status = "EXPIRED"
+                    db.session.commit()
+                except SQLAlchemyError:
+                    db.session.rollback()
+            return jsonify({"error": "Transaction has expired. Please run a new transaction assessment."}), 410
+
+        # Strict Server-Side Fraud Gating: Never trust frontend scores
+        if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
+            logger.warning(
+                "Security violation: Blocked PayPal order creation for non-safe transaction %s (Risk: %s%%, Class: %s, Status: %s)",
+                transaction.transaction_id,
+                transaction.risk_score,
+                transaction.risk_classification,
+                transaction.transaction_status
+            )
+            return jsonify({
+                "error": f"Payment order creation blocked: transaction risk is '{transaction.risk_classification}' (Risk: {transaction.risk_score:.2f}%)."
+            }), 403
 
         if transaction.payment_status == "COMPLETED":
-            return jsonify({"error": "Transaction has already been completed."}), 400
+            return jsonify({"error": "Transaction has already been paid and completed."}), 400
 
-        if transaction.payment_status not in ("PENDING", "NOT_ATTEMPTED"):
-            return jsonify({"error": f"Transaction is not payable (Status: {transaction.payment_status})."}), 400
+        if transaction.payment_status in ("CANCELLED", "FAILED"):
+            return jsonify({"error": f"Payment order cannot be created for a {transaction.payment_status} transaction."}), 400
 
-        # Reuse existing order if already generated
+        if transaction.payment_status.startswith("BLOCKED"):
+            return jsonify({"error": "Payment is strictly blocked for this transaction."}), 403
+
+        # Reuse existing order if already generated and still pending
         if transaction.paypal_order_id:
             return jsonify({"id": transaction.paypal_order_id})
 
         access_token = get_paypal_access_token()
         formatted_amount = f"{transaction.amount:.2f}"
 
+        # Bind transaction ID into both reference_id and custom_id
         order_payload = {
             "intent": "CAPTURE",
             "purchase_units": [
                 {
                     "reference_id": transaction.transaction_id,
+                    "custom_id": transaction.transaction_id,
+                    "description": f"ScamShield Pay - Tx {transaction.transaction_id}",
                     "amount": {
                         "currency_code": transaction.currency,
                         "value": formatted_amount
@@ -673,12 +742,15 @@ def create_paypal_order():
             ]
         }
 
+        # Deterministic Idempotency Key for order creation
+        order_idempotency_key = f"ord-{transaction.transaction_id}"
+
         response = requests.post(
             f"{PAYPAL_BASE_URL}/v2/checkout/orders",
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}",
-                "PayPal-Request-Id": secrets.token_urlsafe(20)
+                "PayPal-Request-Id": order_idempotency_key
             },
             json=order_payload,
             timeout=20
@@ -691,7 +763,7 @@ def create_paypal_order():
                 response.text
             )
             return jsonify({
-                "error": "Failed to create order with PayPal.",
+                "error": "Failed to create order with PayPal Sandbox.",
                 "details": response.json() if response.headers.get("content-type") == "application/json" else response.text
             }), response.status_code
 
@@ -714,10 +786,15 @@ def create_paypal_order():
 
         return jsonify({"id": order_id})
 
+    except requests.exceptions.Timeout:
+        logger.error("PayPal order request timed out.")
+        return jsonify({"error": "PayPal request timed out. Please try again."}), 504
+    except requests.exceptions.ConnectionError:
+        logger.error("Unable to connect to PayPal gateway.")
+        return jsonify({"error": "Unable to connect to PayPal gateway. Check connection."}), 502
     except requests.RequestException as req_err:
         logger.exception("PayPal order request error: %s", req_err)
         return jsonify({"error": "Network error communicating with PayPal."}), 502
-
     except Exception as exc:
         logger.exception("Unexpected error creating order: %s", exc)
         return jsonify({"error": "Internal server error."}), 500
@@ -729,7 +806,19 @@ def create_paypal_order():
 
 @app.route("/capture-paypal-order", methods=["POST"])
 def capture_paypal_order():
-    """Captures and validates a PayPal payment following buyer approval, updating the DB record."""
+    """
+    Captures and validates a PayPal payment following buyer approval, updating the DB record.
+    Security Validations:
+    - Verifies transaction exists in SQLite
+    - Verifies server-side risk classification is Safe (risk_score < 35.0, APPROVED)
+    - Validates order ID format and matches registered paypal_order_id
+    - Inspects PayPal order state in PayPal Sandbox
+    - Validates PayPal order reference_id/custom_id matches the expected transaction
+    - Validates currency and amount strictly against stored SQLite transaction
+    - Idempotent: Handles duplicate capture calls safely without duplicate charges
+    - Verifies PayPal capture response status is COMPLETED before updating database
+    - Persists capture ID and updates transaction status to COMPLETED
+    """
     try:
         data = request.get_json(silent=True) or {}
         raw_tx_id = (data.get("transaction_id") or "").strip()
@@ -741,6 +830,9 @@ def capture_paypal_order():
         if not is_valid_transaction_id(raw_tx_id):
             return jsonify({"error": "Invalid transaction_id format."}), 400
 
+        if not is_valid_paypal_order_id(raw_order_id):
+            return jsonify({"error": "Invalid PayPal order ID format."}), 400
+
         try:
             transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
         except SQLAlchemyError as db_err:
@@ -750,89 +842,182 @@ def capture_paypal_order():
         if not transaction:
             return jsonify({"error": "Invalid or expired transaction."}), 404
 
+        # Idempotency Check #1: If already completed in SQLite, return existing capture immediately
         if transaction.payment_status == "COMPLETED":
+            logger.info(
+                "Idempotency check: Transaction %s is already completed with capture %s.",
+                transaction.transaction_id,
+                transaction.paypal_capture_id
+            )
             return jsonify({
                 "status": "COMPLETED",
                 "capture_id": transaction.paypal_capture_id,
-                "message": "Payment has already been completed."
-            })
+                "message": "Payment has already been completed.",
+                "idempotent": True
+            }), 200
 
-        if transaction.risk_classification != "Safe" or transaction.transaction_status != "APPROVED":
+        # Expiration validation
+        if is_transaction_expired(transaction):
+            try:
+                transaction.payment_status = "EXPIRED"
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+            return jsonify({"error": "Transaction has expired."}), 410
+
+        # Strict Server-Side Gating: Safe & APPROVED only
+        if transaction.risk_classification != "Safe" or transaction.risk_score >= 35.0 or transaction.transaction_status != "APPROVED":
+            logger.warning(
+                "Security violation: Attempted payment capture for unsafe transaction %s (Risk: %s%%)",
+                transaction.transaction_id,
+                transaction.risk_score
+            )
             return jsonify({"error": "Transaction is not eligible for payment capture."}), 403
 
+        # Verify order ID matches database record
         if transaction.paypal_order_id and raw_order_id != transaction.paypal_order_id:
+            logger.warning(
+                "Order ID mismatch: Request order %s != database order %s for tx %s",
+                raw_order_id,
+                transaction.paypal_order_id,
+                transaction.transaction_id
+            )
             return jsonify({"error": "Order ID mismatch with database record."}), 400
 
         access_token = get_paypal_access_token()
 
-        # Step A: Inspect the order state in PayPal
+        # Step A: Inspect the order state in PayPal Sandbox
         order_response = requests.get(
             f"{PAYPAL_BASE_URL}/v2/checkout/orders/{raw_order_id}",
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=20
         )
 
+        if order_response.status_code == 404:
+            return jsonify({"error": "PayPal order not found in PayPal Sandbox."}), 404
+
         if not order_response.ok:
-            logger.error("Failed to inspect PayPal order: %s", order_response.text)
-            return jsonify({"error": "Unable to verify PayPal order state."}), 502
+            logger.error("Failed to inspect PayPal order: %s - %s", order_response.status_code, order_response.text)
+            return jsonify({"error": "Unable to verify PayPal order state with PayPal Sandbox."}), 502
 
         order_data = order_response.json()
         order_status = order_data.get("status")
 
-        # Step B: Validate purchase unit currency and amount
+        # Step B: Validate purchase unit and cross-order verification
         purchase_units = order_data.get("purchase_units", [])
         if not purchase_units:
-            return jsonify({"error": "Order has no purchase units."}), 400
+            return jsonify({"error": "PayPal order has no purchase units."}), 400
 
         pu = purchase_units[0]
-        pu_amount = pu.get("amount", {})
 
+        # Verify that the PayPal order belongs to this transaction
+        pu_ref = pu.get("reference_id") or pu.get("custom_id")
+        if pu_ref and pu_ref != transaction.transaction_id:
+            logger.error(
+                "Security violation: PayPal order reference '%s' does not match transaction '%s'.",
+                pu_ref,
+                transaction.transaction_id
+            )
+            return jsonify({"error": "Order verification failed: PayPal order does not belong to this transaction."}), 400
+
+        # Validate Currency and Amount
+        pu_amount = pu.get("amount", {})
         if pu_amount.get("currency_code") != transaction.currency:
-            return jsonify({"error": "Currency mismatch."}), 400
+            logger.error(
+                "Currency mismatch: expected %s, got %s",
+                transaction.currency,
+                pu_amount.get("currency_code")
+            )
+            return jsonify({"error": f"Currency mismatch: expected {transaction.currency}."}), 400
 
         expected_amount = f"{transaction.amount:.2f}"
         if pu_amount.get("value") != expected_amount:
-            return jsonify({"error": "Payment amount mismatch."}), 400
+            logger.error(
+                "Amount mismatch: expected %s, got %s",
+                expected_amount,
+                pu_amount.get("value")
+            )
+            return jsonify({"error": f"Payment amount mismatch: expected {expected_amount}."}), 400
 
-        # Step C: Capture if approved, or check if already completed
+        # Step C: Idempotency Check #2: If PayPal order is already COMPLETED
         if order_status == "COMPLETED":
             captures = pu.get("payments", {}).get("captures", [])
             capture_id = captures[0].get("id") if captures else "CAPTURED"
-            transaction.payment_status = "COMPLETED"
-            transaction.transaction_status = "COMPLETED"
-            transaction.paypal_capture_id = capture_id
-            db.session.commit()
+            try:
+                transaction.payment_status = "COMPLETED"
+                transaction.transaction_status = "COMPLETED"
+                transaction.paypal_order_id = raw_order_id
+                transaction.paypal_capture_id = capture_id
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
             return jsonify({
                 "status": "COMPLETED",
                 "capture_id": capture_id,
-                "message": "Payment already completed."
-            })
+                "message": "Payment already completed in PayPal.",
+                "idempotent": True
+            }), 200
 
         if order_status != "APPROVED":
+            logger.warning("Order %s status is '%s', not APPROVED.", raw_order_id, order_status)
             return jsonify({
                 "error": f"PayPal order status is '{order_status}'. Buyer approval is required before capture."
             }), 400
+
+        # Step D: Capture payment with Gateway Idempotency Key
+        capture_idempotency_key = f"cap-{transaction.transaction_id}-{raw_order_id}"
 
         capture_response = requests.post(
             f"{PAYPAL_BASE_URL}/v2/checkout/orders/{raw_order_id}/capture",
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}",
-                "PayPal-Request-Id": f"cap-{raw_order_id}-{secrets.token_urlsafe(8)}"
+                "PayPal-Request-Id": capture_idempotency_key
             },
             json={},
             timeout=30
         )
 
+        # Handle ORDER_ALREADY_CAPTURED (422) as idempotent success
+        if capture_response.status_code == 422:
+            try:
+                err_data = capture_response.json()
+                issues = [d.get("issue") for d in err_data.get("details", [])]
+                if "ORDER_ALREADY_CAPTURED" in issues:
+                    logger.info("Order %s was already captured by PayPal; reconciling state.", raw_order_id)
+                    reinspect = requests.get(
+                        f"{PAYPAL_BASE_URL}/v2/checkout/orders/{raw_order_id}",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        timeout=15
+                    )
+                    if reinspect.ok:
+                        r_data = reinspect.json()
+                        caps = r_data.get("purchase_units", [{}])[0].get("payments", {}).get("captures", [])
+                        cap_id = caps[0].get("id") if caps else "CAPTURED"
+                        transaction.payment_status = "COMPLETED"
+                        transaction.transaction_status = "COMPLETED"
+                        transaction.paypal_capture_id = cap_id
+                        db.session.commit()
+                        return jsonify({
+                            "status": "COMPLETED",
+                            "capture_id": cap_id,
+                            "message": "Payment already completed.",
+                            "idempotent": True
+                        }), 200
+            except Exception as e:
+                logger.warning("Could not reconcile 422 already captured: %s", e)
+
         if not capture_response.ok:
-            logger.error("PayPal capture failed: %s", capture_response.text)
-            # Record failure in database
+            logger.error("PayPal capture failed: %s - %s", capture_response.status_code, capture_response.text)
             try:
                 transaction.payment_status = "FAILED"
                 db.session.commit()
             except SQLAlchemyError:
                 db.session.rollback()
-            return jsonify({"error": "PayPal capture call failed."}), capture_response.status_code
+            return jsonify({
+                "error": "PayPal capture call failed.",
+                "details": capture_response.text
+            }), capture_response.status_code
 
         capture_data = capture_response.json()
         cap_status = capture_data.get("status")
@@ -843,23 +1028,39 @@ def capture_paypal_order():
                 db.session.commit()
             except SQLAlchemyError:
                 db.session.rollback()
-            return jsonify({"error": f"Payment capture status was '{cap_status}'."}), 400
+            return jsonify({"error": f"Payment capture status was '{cap_status}', expected 'COMPLETED'."}), 400
 
+        # Step E: Validate captured amount and currency in capture response
         captured_units = capture_data.get("purchase_units", [])
         capture_id = None
         if captured_units:
             caps = captured_units[0].get("payments", {}).get("captures", [])
             if caps:
-                capture_id = caps[0].get("id")
+                cap = caps[0]
+                capture_id = cap.get("id")
+                c_amount = cap.get("amount", {})
+                if c_amount.get("value") != expected_amount or c_amount.get("currency_code") != transaction.currency:
+                    logger.error(
+                        "Captured amount mismatch: expected %s %s, got %s %s",
+                        expected_amount,
+                        transaction.currency,
+                        c_amount.get("value"),
+                        c_amount.get("currency_code")
+                    )
+                    return jsonify({"error": "Captured amount mismatch with transaction record."}), 400
+
+        if not capture_id:
+            capture_id = capture_data.get("id") or "CAPTURED"
 
         # Update Database Record: COMPLETED
         try:
             transaction.payment_status = "COMPLETED"
             transaction.transaction_status = "COMPLETED"
+            transaction.paypal_order_id = raw_order_id
             transaction.paypal_capture_id = capture_id
             db.session.commit()
             logger.info(
-                "Transaction %s successfully captured and updated in database! (Capture ID: %s)",
+                "Transaction %s successfully captured and marked COMPLETED in database! (Capture ID: %s)",
                 transaction.transaction_id,
                 capture_id
             )
@@ -872,44 +1073,144 @@ def capture_paypal_order():
             "status": "COMPLETED",
             "capture_id": capture_id,
             "message": "Payment captured successfully."
-        })
+        }), 200
 
+    except requests.exceptions.Timeout:
+        logger.error("PayPal capture request timed out.")
+        return jsonify({"error": "PayPal capture request timed out. Please try again."}), 504
+    except requests.exceptions.ConnectionError:
+        logger.error("Unable to connect to PayPal gateway during capture.")
+        return jsonify({"error": "Unable to connect to PayPal gateway. Please check connection."}), 502
     except requests.RequestException as req_err:
         logger.exception("PayPal capture request error: %s", req_err)
-        return jsonify({"error": "Unable to verify payment with PayPal."}), 502
-
+        return jsonify({"error": "Unable to verify payment with PayPal Sandbox."}), 502
     except Exception as exc:
         logger.exception("Unexpected error capturing payment: %s", exc)
         return jsonify({"error": "Internal server error."}), 500
 
 
 # --------------------------------------------------
-# 7. PAYMENT SUCCESS & CANCEL
+# 7. PAYMENT SUCCESS, CANCEL & LIFECYCLE HOOKS
 # --------------------------------------------------
+
+@app.route("/cancel-paypal-order", methods=["POST"])
+def cancel_paypal_order():
+    """
+    Handles buyer cancellation notification from the frontend PayPal SDK.
+    Marks the transaction payment_status as CANCELLED in SQLite if still PENDING.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_tx_id = (data.get("transaction_id") or "").strip()
+
+        if not raw_tx_id or not is_valid_transaction_id(raw_tx_id):
+            return jsonify({"error": "Invalid transaction ID format."}), 400
+
+        transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
+        if not transaction:
+            return jsonify({"error": "Transaction not found."}), 404
+
+        if transaction.payment_status in ("PENDING", "NOT_ATTEMPTED"):
+            transaction.payment_status = "CANCELLED"
+            db.session.commit()
+            logger.info("Marked transaction %s as CANCELLED via API.", raw_tx_id)
+
+        return jsonify({
+            "status": "CANCELLED",
+            "message": "Payment was cancelled. No funds were transferred."
+        })
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        logger.exception("Database error recording cancellation: %s", db_err)
+        return jsonify({"error": "Database error recording cancellation."}), 500
+
+
+@app.route("/fail-paypal-order", methods=["POST"])
+def fail_paypal_order():
+    """
+    Handles payment failure notification from the frontend PayPal SDK.
+    Marks the transaction payment_status as FAILED in SQLite if still PENDING.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        raw_tx_id = (data.get("transaction_id") or "").strip()
+        error_msg = (data.get("error") or "Payment processing failed").strip()
+
+        if not raw_tx_id or not is_valid_transaction_id(raw_tx_id):
+            return jsonify({"error": "Invalid transaction ID format."}), 400
+
+        transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
+        if not transaction:
+            return jsonify({"error": "Transaction not found."}), 404
+
+        if transaction.payment_status in ("PENDING", "NOT_ATTEMPTED"):
+            transaction.payment_status = "FAILED"
+            db.session.commit()
+            logger.info("Marked transaction %s as FAILED via API (Reason: %s).", raw_tx_id, error_msg)
+
+        return jsonify({
+            "status": "FAILED",
+            "message": "Payment failure recorded in database."
+        })
+    except SQLAlchemyError as db_err:
+        db.session.rollback()
+        logger.exception("Database error recording failure: %s", db_err)
+        return jsonify({"error": "Database error recording payment failure."}), 500
+
 
 @app.route("/payment/success")
 def payment_success():
-    """Displays payment completion confirmation retrieved from the database."""
+    """
+    Renders payment completion confirmation ONLY after successful server-side capture verification.
+    If the transaction is missing, invalid, or not verified as COMPLETED in the database,
+    it strictly rejects the request and displays a payment incomplete warning.
+    """
     raw_tx_id = (request.args.get("transaction_id") or "").strip()
-    transaction = None
+    if not raw_tx_id or not is_valid_transaction_id(raw_tx_id):
+        return render_template("result.html", result={
+            "status": "Invalid Transaction",
+            "decision": "error",
+            "message": "Invalid or missing transaction identifier."
+        }), 400
 
-    if raw_tx_id and is_valid_transaction_id(raw_tx_id):
-        try:
-            transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
-        except SQLAlchemyError as db_err:
-            logger.exception("Database error loading completed transaction: %s", db_err)
+    try:
+        transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
+    except SQLAlchemyError as db_err:
+        logger.exception("Database error loading completed transaction: %s", db_err)
+        return render_template("result.html", result={
+            "status": "Database Error",
+            "decision": "error",
+            "message": "Unable to verify payment status due to a database error."
+        }), 500
 
-    amount = transaction.amount if transaction else 0.0
-    capture_id = transaction.paypal_capture_id if transaction else None
-    risk_score = transaction.risk_score if transaction else 0.0
+    if not transaction:
+        return render_template("result.html", result={
+            "status": "Transaction Not Found",
+            "decision": "error",
+            "message": "Transaction record not found in the database."
+        }), 404
+
+    # Strict Server-Side Verification: Must be verified as COMPLETED in SQLite
+    if transaction.payment_status != "COMPLETED":
+        logger.warning(
+            "Access denied to /payment/success for non-completed transaction %s (Payment status: %s)",
+            raw_tx_id,
+            transaction.payment_status
+        )
+        return render_template("result.html", result={
+            "status": "Payment Not Completed",
+            "decision": "error",
+            "transaction_id": raw_tx_id,
+            "message": f"Payment has not been completed or verified by PayPal Sandbox. Current status: '{transaction.payment_status}'."
+        }), 400
 
     return render_template("result.html", result={
         "status": "Payment Successful",
         "decision": "completed",
-        "risk_score": risk_score,
-        "amount": amount,
-        "transaction_id": raw_tx_id,
-        "capture_id": capture_id
+        "risk_score": transaction.risk_score,
+        "amount": transaction.amount,
+        "transaction_id": transaction.transaction_id,
+        "capture_id": transaction.paypal_capture_id
     })
 
 
@@ -920,7 +1221,7 @@ def payment_cancel():
     if raw_tx_id and is_valid_transaction_id(raw_tx_id):
         try:
             transaction = Transaction.query.filter_by(transaction_id=raw_tx_id).first()
-            if transaction and transaction.payment_status == "PENDING":
+            if transaction and transaction.payment_status in ("PENDING", "NOT_ATTEMPTED"):
                 transaction.payment_status = "CANCELLED"
                 db.session.commit()
                 logger.info("Marked transaction %s as CANCELLED in database", raw_tx_id)
