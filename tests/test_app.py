@@ -269,3 +269,198 @@ def test_payment_success_displays_db_record(client):
     assert b"Payment Successful" in succ_res.data
     assert b"55.00" in succ_res.data
     assert b"TEST_CAP_98765" in succ_res.data
+
+
+# --------------------------------------------------
+# DASHBOARD TESTS
+# --------------------------------------------------
+
+def test_dashboard_page(client):
+    """Test that /dashboard and /admin routes load successfully with 200."""
+    res = client.get("/dashboard")
+    assert res.status_code == 200
+    assert b"ScamShield Pay" in res.data
+    assert b"Executive Overview" in res.data
+    assert b"Random Forest" in res.data
+
+    res_admin = client.get("/admin")
+    assert res_admin.status_code == 200
+    assert b"ScamShield Pay" in res_admin.data
+
+
+def test_dashboard_stats_empty_db(client):
+    """Test dashboard stats endpoint handles an empty database gracefully."""
+    res = client.get("/api/dashboard/stats")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    metrics = data["metrics"]
+    assert metrics["total_transactions"] == 0
+    assert metrics["safe_transactions"] == 0
+    assert metrics["suspicious_transactions"] == 0
+    assert metrics["high_risk_transactions"] == 0
+    assert metrics["successful_payments"] == 0
+    assert metrics["blocked_transactions"] == 0
+    assert metrics["total_volume_usd"] == 0.0
+    assert metrics["avg_risk_score"] == 0.0
+    assert metrics["approval_rate"] == 0.0
+
+
+def test_dashboard_stats_with_data(client):
+    """Test that dashboard stats aggregate real transaction data accurately."""
+    # 1. Safe transaction ($50)
+    client.post("/predict", json={
+        "amount": 50.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+
+    # 2. Suspicious transaction ($12,000)
+    client.post("/predict", json={
+        "amount": 12000.0,
+        "transaction_hour": 3,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 2
+    })
+
+    # 3. High-Risk transaction ($35,000)
+    client.post("/predict", json={
+        "amount": 35000.0,
+        "transaction_hour": 1,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 4
+    })
+
+    res = client.get("/api/dashboard/stats")
+    assert res.status_code == 200
+    data = res.get_json()
+    metrics = data["metrics"]
+    assert metrics["total_transactions"] == 3
+    assert metrics["safe_transactions"] == 1
+    assert metrics["suspicious_transactions"] == 1
+    assert metrics["high_risk_transactions"] == 1
+    assert metrics["total_volume_usd"] == 47050.0
+    assert metrics["approval_rate"] == 33.3
+
+
+def test_dashboard_charts_api(client):
+    """Test that /api/dashboard/charts returns chart datasets."""
+    # Add a transaction
+    client.post("/predict", json={
+        "amount": 45.0,
+        "transaction_hour": 12,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+
+    res = client.get("/api/dashboard/charts?date_range=7d")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    assert "risk_distribution" in data
+    assert "payment_outcomes" in data
+    assert "daily_volume" in data
+    assert "risk_trend" in data
+    assert data["risk_distribution"]["Safe"] >= 1
+
+
+def test_dashboard_transactions_filter_and_pagination(client):
+    """Test filtering transactions by risk classification and pagination."""
+    # Add safe transaction
+    res1 = client.post("/predict", json={
+        "amount": 25.0,
+        "transaction_hour": 12,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    safe_tx_id = res1.get_json()["transaction_id"]
+
+    # Add high-risk transaction
+    res2 = client.post("/predict", json={
+        "amount": 40000.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 5
+    })
+    danger_tx_id = res2.get_json()["transaction_id"]
+
+    # Filter by Safe
+    res_safe = client.get("/api/dashboard/transactions?risk=Safe")
+    assert res_safe.status_code == 200
+    data_safe = res_safe.get_json()
+    assert data_safe["total"] == 1
+    assert data_safe["transactions"][0]["transaction_id"] == safe_tx_id
+
+    # Filter by High Risk
+    res_high = client.get("/api/dashboard/transactions?risk=High%20Risk")
+    assert res_high.status_code == 200
+    data_high = res_high.get_json()
+    assert data_high["total"] == 1
+    assert data_high["transactions"][0]["transaction_id"] == danger_tx_id
+
+    # Search by ID prefix
+    prefix = safe_tx_id[:8]
+    res_search = client.get(f"/api/dashboard/transactions?search={prefix}")
+    assert res_search.status_code == 200
+    assert res_search.get_json()["total"] == 1
+
+
+def test_dashboard_transaction_detail(client):
+    """Test deep transaction inspection endpoint."""
+    res = client.post("/predict", json={
+        "amount": 100.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    detail_res = client.get(f"/api/dashboard/transactions/{tx_id}")
+    assert detail_res.status_code == 200
+    data = detail_res.get_json()
+    assert data["status"] == "success"
+    tx = data["transaction"]
+    assert tx["transaction_id"] == tx_id
+    assert tx["amount"] == 100.0
+
+    exp = data["explainability"]
+    assert "indicators" in exp
+    assert "recommendation" in exp
+    assert len(exp["indicators"]) == 5
+
+    # Test invalid and non-existent IDs
+    assert client.get("/api/dashboard/transactions/invalid!id").status_code == 400
+    assert client.get("/api/dashboard/transactions/nonexistent_tx_1234567890").status_code == 404
+
+
+def test_dashboard_seed_and_clear_demo(client):
+    """Test seeding demo transactions and clearing them."""
+    seed_res = client.post("/api/dashboard/seed-demo")
+    assert seed_res.status_code == 200
+    seed_data = seed_res.get_json()
+    assert seed_data["status"] == "success"
+    assert seed_data["count"] == 14
+
+    # Verify transactions count
+    stats_res = client.get("/api/dashboard/stats")
+    assert stats_res.get_json()["metrics"]["total_transactions"] == 14
+
+    # Clear demo
+    clear_res = client.post("/api/dashboard/clear-demo")
+    assert clear_res.status_code == 200
+    clear_data = clear_res.get_json()
+    assert clear_data["status"] == "success"
+    assert clear_data["count"] == 14
+
+    # Verify cleared
+    stats_res2 = client.get("/api/dashboard/stats")
+    assert stats_res2.get_json()["metrics"]["total_transactions"] == 0
+

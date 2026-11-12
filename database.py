@@ -78,3 +78,4 @@ class Transaction(db.Model):
             f"amount={self.amount} risk={self.risk_score}% "
             f"class={self.risk_classification} status={self.payment_status}>"
         )
+

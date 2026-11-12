@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import logging
 import os
 import re
@@ -9,7 +10,7 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import text
+from sqlalchemy import desc, func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import db, Transaction
@@ -930,7 +931,473 @@ def payment_cancel():
 
 
 # --------------------------------------------------
-# 8. RUN APPLICATION
+# 8. ADMIN DASHBOARD & ANALYTICS APIS
+# --------------------------------------------------
+
+def _apply_date_filter(query, date_range):
+    """Applies a date range window filter to a SQLAlchemy query."""
+    now = datetime.utcnow()
+    if date_range == "today":
+        start_date = datetime(now.year, now.month, now.day)
+        return query.filter(Transaction.created_at >= start_date)
+    elif date_range == "7d":
+        start_date = now - timedelta(days=7)
+        return query.filter(Transaction.created_at >= start_date)
+    elif date_range == "30d":
+        start_date = now - timedelta(days=30)
+        return query.filter(Transaction.created_at >= start_date)
+    return query
+
+
+@app.route("/dashboard")
+@app.route("/admin")
+def dashboard():
+    """Renders the ScamShield Pay Fintech Admin & Fraud Intelligence Dashboard."""
+    return render_template("dashboard.html")
+
+
+@app.route("/api/dashboard/stats")
+def api_dashboard_stats():
+    """
+    Returns aggregated KPI metrics from the database.
+    Query parameters:
+        date_range: 'today' | '7d' | '30d' | 'all' (default: 'all')
+    """
+    date_range = request.args.get("date_range", "all").strip().lower()
+    try:
+        base_query = _apply_date_filter(Transaction.query, date_range)
+
+        total_tx = base_query.count()
+        safe_tx = base_query.filter_by(risk_classification="Safe").count()
+        suspicious_tx = base_query.filter_by(risk_classification="Suspicious").count()
+        high_risk_tx = base_query.filter_by(risk_classification="High Risk").count()
+
+        successful_payments = base_query.filter_by(payment_status="COMPLETED").count()
+
+        blocked_tx = base_query.filter(
+            or_(
+                Transaction.transaction_status == "BLOCKED",
+                Transaction.payment_status.like("BLOCKED%")
+            )
+        ).count()
+
+        # Aggregated financial volume and average risk score
+        agg_query = db.session.query(
+            func.coalesce(func.sum(Transaction.amount), 0.0).label("total_volume"),
+            func.coalesce(func.avg(Transaction.risk_score), 0.0).label("avg_risk")
+        )
+        agg = _apply_date_filter(agg_query, date_range).first()
+
+        total_volume = round(float(agg.total_volume), 2) if agg and agg.total_volume is not None else 0.0
+        avg_risk = round(float(agg.avg_risk), 1) if agg and agg.avg_risk is not None else 0.0
+
+        approval_rate = round((safe_tx / total_tx * 100), 1) if total_tx > 0 else 0.0
+
+        return jsonify({
+            "status": "success",
+            "date_range": date_range,
+            "metrics": {
+                "total_transactions": total_tx,
+                "safe_transactions": safe_tx,
+                "suspicious_transactions": suspicious_tx,
+                "high_risk_transactions": high_risk_tx,
+                "successful_payments": successful_payments,
+                "blocked_transactions": blocked_tx,
+                "total_volume_usd": total_volume,
+                "avg_risk_score": avg_risk,
+                "approval_rate": approval_rate
+            }
+        })
+    except SQLAlchemyError as err:
+        logger.exception("Database error fetching dashboard stats: %s", err)
+        return jsonify({"error": "Database query error", "status": "error"}), 500
+
+
+@app.route("/api/dashboard/charts")
+def api_dashboard_charts():
+    """
+    Returns chart-ready datasets for Chart.js analytics:
+    - Risk category distribution
+    - Payment lifecycle outcomes
+    - Daily transaction volume & amount
+    - Risk trend / velocity line
+    Query parameters:
+        date_range: 'today' | '7d' | '30d' | 'all' (default: '7d')
+    """
+    date_range = request.args.get("date_range", "7d").strip().lower()
+    try:
+        base_query = _apply_date_filter(Transaction.query, date_range)
+
+        # 1. Risk category distribution
+        risk_distribution = {
+            "Safe": base_query.filter_by(risk_classification="Safe").count(),
+            "Suspicious": base_query.filter_by(risk_classification="Suspicious").count(),
+            "High Risk": base_query.filter_by(risk_classification="High Risk").count()
+        }
+
+        # 2. Payment status outcomes
+        status_query = db.session.query(
+            Transaction.payment_status,
+            func.count(Transaction.id)
+        )
+        status_query = _apply_date_filter(status_query, date_range)
+        raw_statuses = dict(status_query.group_by(Transaction.payment_status).all())
+
+        payment_outcomes = {
+            "COMPLETED": raw_statuses.get("COMPLETED", 0),
+            "PENDING": raw_statuses.get("PENDING", 0),
+            "BLOCKED": sum(v for k, v in raw_statuses.items() if k.startswith("BLOCKED")),
+            "FAILED": raw_statuses.get("FAILED", 0),
+            "CANCELLED": raw_statuses.get("CANCELLED", 0),
+            "NOT_ATTEMPTED": raw_statuses.get("NOT_ATTEMPTED", 0)
+        }
+
+        # 3. Daily volume and counts (database-agnostic date formatting)
+        is_sqlite = db.engine.name == "sqlite"
+        date_expr = (
+            func.strftime("%Y-%m-%d", Transaction.created_at)
+            if is_sqlite
+            else func.to_char(Transaction.created_at, "YYYY-MM-DD")
+        )
+
+        daily_query = db.session.query(
+            date_expr.label("day"),
+            func.count(Transaction.id).label("count"),
+            func.coalesce(func.sum(Transaction.amount), 0.0).label("volume"),
+            func.coalesce(func.avg(Transaction.risk_score), 0.0).label("avg_risk")
+        )
+        daily_query = _apply_date_filter(daily_query, date_range if date_range != "all" else "30d")
+        daily_results = daily_query.group_by("day").order_by("day").all()
+
+        daily_data = [
+            {
+                "date": row.day,
+                "count": int(row.count),
+                "volume": round(float(row.volume), 2),
+                "avg_risk": round(float(row.avg_risk), 1)
+            }
+            for row in daily_results
+            if row.day is not None
+        ]
+
+        # 4. Recent Risk Trend (up to 20 most recent transactions)
+        trend_query = _apply_date_filter(Transaction.query, date_range)
+        recent_txs = trend_query.order_by(Transaction.created_at.desc()).limit(20).all()
+        recent_txs.reverse()  # Chronological display
+
+        risk_trend = {
+            "labels": [t.transaction_id[:8] for t in recent_txs],
+            "scores": [round(t.risk_score, 1) for t in recent_txs],
+            "dates": [t.created_at.strftime("%b %d %H:%M") if t.created_at else "" for t in recent_txs],
+            "amounts": [round(t.amount, 2) for t in recent_txs],
+            "tiers": [t.risk_classification for t in recent_txs]
+        }
+
+        return jsonify({
+            "status": "success",
+            "date_range": date_range,
+            "risk_distribution": risk_distribution,
+            "payment_outcomes": payment_outcomes,
+            "daily_volume": daily_data,
+            "risk_trend": risk_trend
+        })
+    except SQLAlchemyError as err:
+        logger.exception("Database error fetching chart data: %s", err)
+        return jsonify({"error": "Database query error", "status": "error"}), 500
+
+
+@app.route("/api/dashboard/transactions")
+def api_dashboard_transactions():
+    """
+    Returns filtered and paginated transactions from the database.
+    Query parameters:
+        risk: 'all' | 'Safe' | 'Suspicious' | 'High Risk'
+        status: 'all' | 'COMPLETED' | 'PENDING' | 'BLOCKED' | 'FAILED' | 'CANCELLED'
+        search: string (matching transaction_id, paypal_order_id, paypal_capture_id)
+        date_range: 'today' | '7d' | '30d' | 'all'
+        limit: int (1..100, default 25)
+        offset: int (default 0)
+    """
+    try:
+        risk_filter = request.args.get("risk", "all").strip()
+        status_filter = request.args.get("status", "all").strip()
+        search_query = request.args.get("search", "").strip()
+        date_range = request.args.get("date_range", "all").strip().lower()
+
+        try:
+            limit = min(max(int(request.args.get("limit", 25)), 1), 100)
+            offset = max(int(request.args.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            limit = 25
+            offset = 0
+
+        query = Transaction.query
+
+        # Apply date filter
+        query = _apply_date_filter(query, date_range)
+
+        # Apply risk filter
+        if risk_filter and risk_filter.lower() != "all":
+            risk_map = {
+                "safe": "Safe",
+                "suspicious": "Suspicious",
+                "high risk": "High Risk",
+                "high_risk": "High Risk",
+                "highrisk": "High Risk"
+            }
+            canonical_risk = risk_map.get(risk_filter.lower(), risk_filter)
+            query = query.filter(Transaction.risk_classification == canonical_risk)
+
+        # Apply payment status filter
+        if status_filter and status_filter.lower() != "all":
+            if status_filter.upper() == "BLOCKED":
+                query = query.filter(
+                    or_(
+                        Transaction.payment_status.like("BLOCKED%"),
+                        Transaction.transaction_status == "BLOCKED"
+                    )
+                )
+            else:
+                query = query.filter(Transaction.payment_status == status_filter.upper())
+
+        # Apply search query
+        if search_query:
+            term = f"%{search_query}%"
+            query = query.filter(
+                or_(
+                    Transaction.transaction_id.ilike(term),
+                    Transaction.paypal_order_id.ilike(term),
+                    Transaction.paypal_capture_id.ilike(term)
+                )
+            )
+
+        total_count = query.count()
+        records = query.order_by(Transaction.created_at.desc()).offset(offset).limit(limit).all()
+
+        transactions_data = [
+            {
+                "id": t.id,
+                "transaction_id": t.transaction_id,
+                "amount": t.amount,
+                "currency": t.currency,
+                "transaction_hour": t.transaction_hour,
+                "international": bool(t.international),
+                "new_device": bool(t.new_device),
+                "failed_attempts": t.failed_attempts,
+                "risk_score": round(t.risk_score, 2),
+                "risk_classification": t.risk_classification,
+                "transaction_status": t.transaction_status,
+                "payment_status": t.payment_status,
+                "paypal_order_id": t.paypal_order_id,
+                "paypal_capture_id": t.paypal_capture_id,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "created_at_formatted": t.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if t.created_at else ""
+            }
+            for t in records
+        ]
+
+        return jsonify({
+            "status": "success",
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "transactions": transactions_data
+        })
+
+    except SQLAlchemyError as err:
+        logger.exception("Database error querying transactions: %s", err)
+        return jsonify({"error": "Database error retrieving transactions", "status": "error"}), 500
+
+
+@app.route("/api/dashboard/transactions/<transaction_id>")
+def api_dashboard_transaction_detail(transaction_id):
+    """
+    Returns deep inspection detail for a single transaction:
+    - Input features
+    - ML probability verdict
+    - Rule-based explainable risk indicators
+    - Actionable recommendation
+    - PayPal lifecycle references
+    """
+    clean_tx_id = (transaction_id or "").strip()
+    if not clean_tx_id or not is_valid_transaction_id(clean_tx_id):
+        return jsonify({"error": "Invalid transaction ID format.", "status": "error"}), 400
+
+    try:
+        transaction = Transaction.query.filter_by(transaction_id=clean_tx_id).first()
+        if not transaction:
+            return jsonify({"error": "Transaction not found.", "status": "error"}), 404
+
+        # Compute explainable risk indicators
+        indicators = analyze_risk_indicators(
+            amount=transaction.amount,
+            transaction_hour=transaction.transaction_hour,
+            international=transaction.international,
+            new_device=transaction.new_device,
+            failed_attempts=transaction.failed_attempts
+        )
+
+        decision = "approved" if transaction.risk_classification == "Safe" else (
+            "review" if transaction.risk_classification == "Suspicious" else "blocked"
+        )
+        recommendation = get_recommended_action(decision, transaction.risk_score)
+
+        is_payable = (
+            transaction.risk_classification == "Safe"
+            and transaction.transaction_status == "APPROVED"
+            and transaction.payment_status in ("PENDING", "NOT_ATTEMPTED")
+        )
+
+        return jsonify({
+            "status": "success",
+            "transaction": {
+                "id": transaction.id,
+                "transaction_id": transaction.transaction_id,
+                "amount": transaction.amount,
+                "currency": transaction.currency,
+                "transaction_hour": transaction.transaction_hour,
+                "international": bool(transaction.international),
+                "new_device": bool(transaction.new_device),
+                "failed_attempts": transaction.failed_attempts,
+                "risk_score": round(transaction.risk_score, 2),
+                "risk_classification": transaction.risk_classification,
+                "transaction_status": transaction.transaction_status,
+                "payment_status": transaction.payment_status,
+                "paypal_order_id": transaction.paypal_order_id,
+                "paypal_capture_id": transaction.paypal_capture_id,
+                "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
+                "created_at_formatted": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if transaction.created_at else "",
+                "is_payable": is_payable,
+                "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None
+            },
+            "explainability": {
+                "indicators": indicators,
+                "recommendation": recommendation,
+                "model_name": "Random Forest Classifier (200 Trees, Stratified)",
+                "feature_weights": {
+                    "amount": 0.457,
+                    "transaction_hour": 0.222,
+                    "failed_attempts": 0.178,
+                    "international": 0.081,
+                    "new_device": 0.062
+                }
+            }
+        })
+
+    except SQLAlchemyError as err:
+        logger.exception("Database error loading transaction detail: %s", err)
+        return jsonify({"error": "Database error", "status": "error"}), 500
+
+
+@app.route("/api/dashboard/seed-demo", methods=["POST"])
+def api_dashboard_seed_demo():
+    """
+    Seeds realistic demo transactions scored directly by the trained Random Forest model.
+    Facilitates immediate visual evaluation of charts, filters, and analytics without manual inputs.
+    """
+    demo_scenarios = [
+        # (amount, hour, intl, new_dev, failed, days_ago, hours_ago, payment_status, sample_order, sample_cap)
+        (45.0, 14, 0, 0, 0, 5, 2, "COMPLETED", "DEMO-ORD-101", "DEMO-CAP-101"),
+        (89.50, 16, 0, 0, 0, 4, 3, "COMPLETED", "DEMO-ORD-102", "DEMO-CAP-102"),
+        (120.0, 12, 0, 0, 0, 3, 5, "COMPLETED", "DEMO-ORD-103", "DEMO-CAP-103"),
+        (35.0, 10, 0, 0, 0, 2, 1, "PENDING", "DEMO-ORD-104", None),
+        (250.0, 18, 0, 0, 0, 1, 4, "COMPLETED", "DEMO-ORD-105", "DEMO-CAP-105"),
+        (65.0, 15, 0, 0, 0, 0, 2, "PENDING", None, None),
+        (6500.0, 2, 1, 0, 1, 4, 1, "BLOCKED_SUSPICIOUS", None, None),
+        (12000.0, 23, 0, 1, 2, 3, 7, "BLOCKED_SUSPICIOUS", None, None),
+        (8500.0, 1, 1, 1, 1, 2, 4, "BLOCKED_SUSPICIOUS", None, None),
+        (5400.0, 4, 0, 1, 2, 1, 2, "BLOCKED_SUSPICIOUS", None, None),
+        (28000.0, 3, 1, 1, 3, 3, 2, "BLOCKED_HIGH_RISK", None, None),
+        (45000.0, 1, 1, 1, 4, 2, 8, "BLOCKED_HIGH_RISK", None, None),
+        (85000.0, 23, 1, 1, 5, 1, 6, "BLOCKED_HIGH_RISK", None, None),
+        (32000.0, 4, 1, 0, 4, 0, 3, "BLOCKED_HIGH_RISK", None, None)
+    ]
+
+    now = datetime.utcnow()
+    created_records = []
+
+    try:
+        for amount, hour, intl, new_dev, failed, d_ago, h_ago, pay_status, ord_id, cap_id in demo_scenarios:
+            df = pd.DataFrame([{
+                "amount": float(amount),
+                "transaction_hour": int(hour),
+                "international": int(intl),
+                "new_device": int(new_dev),
+                "failed_attempts": int(failed)
+            }], columns=FEATURE_COLUMNS)
+
+            # Predict probability using real Random Forest model
+            prob = model.predict_proba(df)[0][1]
+            risk_score = round(float(prob * 100), 2)
+
+            if risk_score < 35.0:
+                classification = "Safe"
+                tx_status = "APPROVED" if pay_status != "COMPLETED" else "COMPLETED"
+            elif risk_score < 70.0:
+                classification = "Suspicious"
+                tx_status = "UNDER_REVIEW"
+                pay_status = "BLOCKED_SUSPICIOUS"
+            else:
+                classification = "High Risk"
+                tx_status = "BLOCKED"
+                pay_status = "BLOCKED_HIGH_RISK"
+
+            tx_token = secrets.token_urlsafe(16)
+            created_time = now - timedelta(days=d_ago, hours=h_ago)
+
+            record = Transaction(
+                transaction_id=tx_token,
+                amount=amount,
+                currency="USD",
+                transaction_hour=hour,
+                international=intl,
+                new_device=new_dev,
+                failed_attempts=failed,
+                risk_score=risk_score,
+                risk_classification=classification,
+                transaction_status=tx_status,
+                paypal_order_id=ord_id,
+                paypal_capture_id=cap_id,
+                payment_status=pay_status,
+                created_at=created_time
+            )
+            db.session.add(record)
+            created_records.append(tx_token)
+
+        db.session.commit()
+        logger.info("Successfully seeded %d demo transactions into database.", len(created_records))
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully seeded {len(created_records)} realistic demo transactions.",
+            "count": len(created_records)
+        })
+
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception("Failed to seed demo transactions: %s", exc)
+        return jsonify({"error": "Failed to seed demo transactions.", "status": "error"}), 500
+
+
+@app.route("/api/dashboard/clear-demo", methods=["POST"])
+def api_dashboard_clear_demo():
+    """Clears all transactions in the database (for testing and clean demo resets)."""
+    try:
+        deleted = db.session.query(Transaction).delete()
+        db.session.commit()
+        logger.info("Cleared %d transactions from database.", deleted)
+        return jsonify({
+            "status": "success",
+            "message": f"Cleared {deleted} transactions.",
+            "count": deleted
+        })
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        logger.exception("Failed to clear transactions: %s", exc)
+        return jsonify({"error": "Failed to clear transactions.", "status": "error"}), 500
+
+
+# --------------------------------------------------
+# 9. RUN APPLICATION
 # --------------------------------------------------
 
 if __name__ == "__main__":

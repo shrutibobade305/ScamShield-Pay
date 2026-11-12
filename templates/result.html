@@ -570,9 +570,15 @@
                     <a href="{{ url_for('index') }}" class="btn-secondary">
                         Back to Home
                     </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                        📊 Admin Dashboard
+                    </a>
                 {% else %}
                     <a href="{{ url_for('index') }}" class="btn-secondary">
                         ← Try Another Transaction
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                        📊 Admin Dashboard
                     </a>
                 {% endif %}
             </div>

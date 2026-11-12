@@ -1,0 +1,2388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScamShield Pay | Admin &amp; Fraud Intelligence Dashboard</title>
+
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <style>
+        :root {
+            --bg-body: #070b14;
+            --bg-sidebar: #0b1220;
+            --bg-card: #10192b;
+            --bg-card-hover: #15223a;
+            --border: #1e293b;
+            --border-light: #2d3b55;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.25);
+            --secondary: #06b6d4;
+            
+            --safe-color: #10b981;
+            --safe-bg: rgba(16, 185, 129, 0.12);
+            --safe-border: rgba(16, 185, 129, 0.35);
+
+            --warn-color: #f59e0b;
+            --warn-bg: rgba(245, 158, 11, 0.12);
+            --warn-border: rgba(245, 158, 11, 0.35);
+
+            --danger-color: #ef4444;
+            --danger-bg: rgba(239, 68, 68, 0.12);
+            --danger-border: rgba(239, 68, 68, 0.35);
+
+            --completed-color: #06b6d4;
+            --completed-bg: rgba(6, 182, 212, 0.12);
+
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* ----------------------------------------------------
+           LAYOUT: SIDEBAR & MAIN CONTENT
+           ---------------------------------------------------- */
+        .dashboard-container {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-brand {
+            padding: 24px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand-logo {
+            font-size: 24px;
+        }
+
+        .brand-title {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            color: #fff;
+        }
+
+        .brand-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #4f46e5, #06b6d4);
+            color: #fff;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        .sidebar-menu {
+            padding: 20px 12px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow-y: auto;
+        }
+
+        .menu-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-dim);
+            font-weight: 700;
+            padding: 10px 12px 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 14px;
+            border-radius: 10px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 13.5px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .nav-item:hover {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.04);
+        }
+
+        .nav-item.active {
+            color: #fff;
+            background-color: rgba(99, 102, 241, 0.15);
+            border-color: rgba(99, 102, 241, 0.35);
+            font-weight: 600;
+        }
+
+        .nav-icon {
+            font-size: 17px;
+            width: 22px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .btn-sidebar-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn-sidebar-link:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        /* ----------------------------------------------------
+           MAIN VIEW AREA
+           ---------------------------------------------------- */
+        .main-wrapper {
+            margin-left: 260px;
+            flex: 1;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-body);
+        }
+
+        /* Top Bar */
+        .topbar {
+            height: 70px;
+            padding: 0 32px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(11, 18, 32, 0.7);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .mobile-toggle {
+            display: none;
+            background: none;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .page-title-box h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.3px;
+        }
+
+        .page-title-box p {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* Status Pills */
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 11.5px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--safe-color);
+            box-shadow: 0 0 8px var(--safe-color);
+        }
+
+        .status-dot.warn {
+            background: var(--warn-color);
+            box-shadow: 0 0 8px var(--warn-color);
+        }
+
+        /* Date Range Selector */
+        .filter-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .filter-select:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .btn-action-primary {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .btn-action-primary:hover {
+            background: #4f46e5;
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .btn-action-outline {
+            background: transparent;
+            border-color: var(--border-light);
+            color: var(--text-muted);
+        }
+
+        .btn-action-outline:hover {
+            border-color: var(--text-muted);
+            color: #fff;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        /* ----------------------------------------------------
+           CONTENT PANELS & VIEWS
+           ---------------------------------------------------- */
+        .content-area {
+            padding: 28px 32px;
+            flex: 1;
+        }
+
+        .view-panel {
+            display: none;
+        }
+
+        .view-panel.active {
+            display: block;
+            animation: fadeIn 0.25s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ----------------------------------------------------
+           KPI SUMMARY CARDS
+           ---------------------------------------------------- */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .kpi-card:hover {
+            border-color: var(--border-light);
+            transform: translateY(-2px);
+            background: var(--bg-card-hover);
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary);
+            opacity: 0.8;
+        }
+
+        .kpi-card.card-safe::before { background: var(--safe-color); }
+        .kpi-card.card-warn::before { background: var(--warn-color); }
+        .kpi-card.card-danger::before { background: var(--danger-color); }
+        .kpi-card.card-completed::before { background: var(--completed-color); }
+        .kpi-card.card-volume::before { background: linear-gradient(90deg, #6366f1, #06b6d4); }
+
+        .kpi-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .kpi-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .kpi-icon {
+            font-size: 16px;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .kpi-value {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #fff;
+            margin-bottom: 4px;
+            line-height: 1;
+        }
+
+        .kpi-subtext {
+            font-size: 11.5px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-pct {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .badge-safe { background: var(--safe-bg); color: var(--safe-color); }
+        .badge-warn { background: var(--warn-bg); color: var(--warn-color); }
+        .badge-danger { background: var(--danger-bg); color: var(--danger-color); }
+
+        /* ----------------------------------------------------
+           ANALYTICS CHARTS GRID
+           ---------------------------------------------------- */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col-4 { grid-column: span 4; }
+        .col-6 { grid-column: span 6; }
+        .col-8 { grid-column: span 8; }
+        .col-12 { grid-column: span 12; }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .chart-title-box h3 {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .chart-title-box p {
+            font-size: 11.5px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .chart-canvas-wrapper {
+            position: relative;
+            flex: 1;
+            min-height: 240px;
+            width: 100%;
+        }
+
+        /* ----------------------------------------------------
+           TRANSACTIONS TABLE & TOOLBAR
+           ---------------------------------------------------- */
+        .table-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 28px;
+        }
+
+        .table-toolbar {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            background: rgba(11, 18, 32, 0.4);
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            position: relative;
+            width: 260px;
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px 8px 34px;
+            color: #fff;
+            font-size: 12.5px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 11px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        .custom-table th {
+            padding: 12px 18px;
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .custom-table td {
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(30, 41, 59, 0.6);
+            color: var(--text-main);
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .custom-table tr:hover td {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .tx-id-badge {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #a5b4fc;
+            background: rgba(99, 102, 241, 0.1);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-copy {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px;
+            transition: color 0.2s;
+        }
+
+        .btn-copy:hover {
+            color: #fff;
+        }
+
+        .amount-text {
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* Risk Badges */
+        .risk-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .risk-pill-safe {
+            background: var(--safe-bg);
+            color: var(--safe-color);
+            border: 1px solid var(--safe-border);
+        }
+
+        .risk-pill-suspicious {
+            background: var(--warn-bg);
+            color: var(--warn-color);
+            border: 1px solid var(--warn-border);
+        }
+
+        .risk-pill-high {
+            background: var(--danger-bg);
+            color: var(--danger-color);
+            border: 1px solid var(--danger-border);
+        }
+
+        /* Payment Status Badges */
+        .pay-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .pay-completed { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .pay-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .pay-blocked { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+        .pay-other { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+
+        .btn-inspect {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #c7d2fe;
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-inspect:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        /* Table Pagination */
+        .table-pagination {
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-page {
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-page:hover:not(:disabled) {
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        .btn-page:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 48px 20px;
+            text-align: center;
+            color: var(--text-dim);
+        }
+
+        .empty-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+            opacity: 0.6;
+        }
+
+        .empty-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .empty-desc {
+            font-size: 12.5px;
+            max-width: 360px;
+            margin: 0 auto 16px;
+        }
+
+        /* ----------------------------------------------------
+           AI RISK ANALYSIS & MODEL ARCHITECTURE PANEL
+           ---------------------------------------------------- */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .info-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+        }
+
+        .info-card h4 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .metric-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .metric-table td {
+            padding: 9px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+        }
+
+        .metric-table td:last-child {
+            text-align: right;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .feature-bar-row {
+            margin-bottom: 12px;
+        }
+
+        .feature-bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .progress-track {
+            height: 7px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #06b6d4);
+            border-radius: 4px;
+        }
+
+        /* ----------------------------------------------------
+           TRANSACTION DETAIL MODAL
+           ---------------------------------------------------- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(3, 7, 18, 0.82);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 18px;
+            max-width: 720px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+            position: relative;
+            animation: modalPop 0.25s ease-out;
+        }
+
+        @keyframes modalPop {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-header {
+            padding: 22px 28px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #111c33;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .modal-title-box h3 {
+            font-size: 17px;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .modal-title-box p {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            margin-top: 2px;
+        }
+
+        .btn-close {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .btn-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .modal-body {
+            padding: 24px 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .modal-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .detail-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .detail-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .indicators-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .indicator-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .indicator-icon {
+            font-size: 16px;
+            margin-top: 2px;
+        }
+
+        .indicator-title {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .indicator-desc {
+            font-size: 11.5px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .rec-card {
+            border-radius: 10px;
+            padding: 16px;
+            border: 1px solid;
+        }
+
+        .rec-safe {
+            background: var(--safe-bg);
+            border-color: var(--safe-border);
+            color: #d1fae5;
+        }
+
+        .rec-warn {
+            background: var(--warn-bg);
+            border-color: var(--warn-border);
+            color: #fef3c7;
+        }
+
+        .rec-danger {
+            background: var(--danger-bg);
+            border-color: var(--danger-border);
+            color: #fee2e2;
+        }
+
+        .rec-header {
+            font-size: 13.5px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .rec-body {
+            font-size: 12px;
+            line-height: 1.5;
+            opacity: 0.9;
+        }
+
+        .modal-footer {
+            padding: 16px 28px;
+            border-top: 1px solid var(--border);
+            background: #111c33;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* ----------------------------------------------------
+           RESPONSIVE BREAKPOINTS
+           ---------------------------------------------------- */
+        @media (max-width: 1024px) {
+            .col-4, .col-6, .col-8 {
+                grid-column: span 12;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .main-wrapper {
+                margin-left: 0;
+            }
+
+            .mobile-toggle {
+                display: block;
+            }
+
+            .topbar {
+                padding: 0 16px;
+            }
+
+            .content-area {
+                padding: 16px;
+            }
+
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .topbar-right .status-pill {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+
+    <!-- ----------------------------------------------------
+         1. SIDEBAR NAVIGATION
+         ---------------------------------------------------- -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <span class="brand-logo">🛡️</span>
+            <div>
+                <div class="brand-title">ScamShield Pay</div>
+                <span class="brand-badge">Fintech Ops</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-menu">
+            <span class="menu-label">Main Navigation</span>
+            <a class="nav-item active" data-view="overview" onclick="switchView('overview')">
+                <span class="nav-icon">📊</span>
+                <span>Overview</span>
+            </a>
+            <a class="nav-item" data-view="transactions" onclick="switchView('transactions')">
+                <span class="nav-icon">💳</span>
+                <span>Transactions</span>
+            </a>
+            <a class="nav-item" data-view="history" onclick="switchView('history')">
+                <span class="nav-icon">📜</span>
+                <span>Transaction History</span>
+            </a>
+            <a class="nav-item" data-view="ai-risk" onclick="switchView('ai-risk')">
+                <span class="nav-icon">🧠</span>
+                <span>AI Risk Analysis</span>
+            </a>
+
+            <span class="menu-label">Administration</span>
+            <a class="nav-item" data-view="settings" onclick="switchView('settings')">
+                <span class="nav-icon">⚙️</span>
+                <span>Settings &amp; Model</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="/" class="btn-sidebar-link">
+                <span>←</span> Live Risk Analyzer
+            </a>
+            <button type="button" class="btn-sidebar-link" onclick="seedDemoData()" style="cursor: pointer; width: 100%;">
+                <span>⚡</span> Seed Demo Records
+            </button>
+        </div>
+    </aside>
+
+    <!-- ----------------------------------------------------
+         2. MAIN WRAPPER & TOP BAR
+         ---------------------------------------------------- -->
+    <main class="main-wrapper">
+        <header class="topbar">
+            <div class="topbar-left">
+                <button class="mobile-toggle" onclick="toggleSidebar()" aria-label="Toggle Sidebar">☰</button>
+                <div class="page-title-box">
+                    <h1 id="view-title">Executive Overview</h1>
+                    <p id="view-subtitle">Real-time AI fraud monitoring and transaction intelligence</p>
+                </div>
+            </div>
+
+            <div class="topbar-right">
+                <!-- Status Pills -->
+                <div class="status-pill">
+                    <span class="status-dot"></span>
+                    <span>SQLite: Connected</span>
+                </div>
+                <div class="status-pill">
+                    <span class="status-dot"></span>
+                    <span>Random Forest (200 Trees)</span>
+                </div>
+
+                <!-- Global Date Filter -->
+                <select id="global-date-range" class="filter-select" onchange="onDateRangeChange(this.value)">
+                    <option value="today">Today</option>
+                    <option value="7d" selected>Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                    <option value="all">All Time</option>
+                </select>
+
+                <button class="btn-action btn-action-outline" onclick="refreshDashboard()" title="Refresh live statistics">
+                    <span>🔄</span> Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- ----------------------------------------------------
+             3. CONTENT AREA
+             ---------------------------------------------------- -->
+        <div class="content-area">
+
+            <!-- ================= VIEW 1: OVERVIEW ================= -->
+            <section id="view-overview" class="view-panel active">
+
+                <!-- 6 KPI SUMMARY CARDS (Core Prompt Requirements) -->
+                <div class="kpi-grid">
+                    <!-- Total Transactions -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Total Transactions</span>
+                            <div class="kpi-icon">📈</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-total">0</div>
+                        <div class="kpi-subtext">All evaluated payments</div>
+                    </div>
+
+                    <!-- Safe Transactions -->
+                    <div class="kpi-card card-safe">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Safe Transactions</span>
+                            <div class="kpi-icon" style="color: var(--safe-color);">🟢</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-safe" style="color: var(--safe-color);">0</div>
+                        <div class="kpi-subtext">
+                            <span class="badge-pct badge-safe">&lt; 35% Risk</span> Auto-Approved
+                        </div>
+                    </div>
+
+                    <!-- Suspicious Transactions -->
+                    <div class="kpi-card card-warn">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Suspicious</span>
+                            <div class="kpi-icon" style="color: var(--warn-color);">🟡</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-suspicious" style="color: var(--warn-color);">0</div>
+                        <div class="kpi-subtext">
+                            <span class="badge-pct badge-warn">35% - 70%</span> Held for Review
+                        </div>
+                    </div>
+
+                    <!-- High-Risk Transactions -->
+                    <div class="kpi-card card-danger">
+                        <div class="kpi-header">
+                            <span class="kpi-title">High-Risk</span>
+                            <div class="kpi-icon" style="color: var(--danger-color);">🔴</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-high-risk" style="color: var(--danger-color);">0</div>
+                        <div class="kpi-subtext">
+                            <span class="badge-pct badge-danger">&ge; 70% Risk</span> Strictly Blocked
+                        </div>
+                    </div>
+
+                    <!-- Successful Payments -->
+                    <div class="kpi-card card-completed">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Successful Payments</span>
+                            <div class="kpi-icon" style="color: var(--completed-color);">💰</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-completed" style="color: var(--completed-color);">0</div>
+                        <div class="kpi-subtext">Captured via PayPal Sandbox</div>
+                    </div>
+
+                    <!-- Blocked Transactions -->
+                    <div class="kpi-card card-danger">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Blocked Transactions</span>
+                            <div class="kpi-icon">🛑</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-blocked">0</div>
+                        <div class="kpi-subtext">Zero-loss fraud prevention</div>
+                    </div>
+
+                    <!-- Secondary Fintech Volume -->
+                    <div class="kpi-card card-volume">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Total Analyzed Volume</span>
+                            <div class="kpi-icon">💵</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-volume">$0.00</div>
+                        <div class="kpi-subtext">Gross transaction flow</div>
+                    </div>
+
+                    <!-- Secondary Average Risk -->
+                    <div class="kpi-card">
+                        <div class="kpi-header">
+                            <span class="kpi-title">Average Risk Score</span>
+                            <div class="kpi-icon">⚖️</div>
+                        </div>
+                        <div class="kpi-value" id="kpi-avg-risk">0.0%</div>
+                        <div class="kpi-subtext">Across evaluated requests</div>
+                    </div>
+                </div>
+
+                <!-- ANALYTICS CHARTS (4 Prompt Components) -->
+                <div class="charts-grid">
+                    <!-- Chart 1: Risk Category Distribution -->
+                    <div class="chart-card col-4">
+                        <div class="chart-header">
+                            <div class="chart-title-box">
+                                <h3>Risk Distribution</h3>
+                                <p>Categorization breakdown by ML verdict</p>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chart-risk-dist"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Daily Transaction Volume -->
+                    <div class="chart-card col-8">
+                        <div class="chart-header">
+                            <div class="chart-title-box">
+                                <h3>Daily Transaction Volume</h3>
+                                <p>Transaction count and monetary volume over time</p>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chart-daily-volume"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 3: Risk Trend & Velocity Chart -->
+                    <div class="chart-card col-8">
+                        <div class="chart-header">
+                            <div class="chart-title-box">
+                                <h3>Fraud Risk Score Velocity</h3>
+                                <p>Chronological risk scores vs 35% Safe &amp; 70% High-Risk thresholds</p>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chart-risk-trend"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 4: Payment Success vs Failure / Outcomes -->
+                    <div class="chart-card col-4">
+                        <div class="chart-header">
+                            <div class="chart-title-box">
+                                <h3>Payment Outcomes</h3>
+                                <p>Completed, Pending, Blocked, and Cancelled</p>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chart-payment-outcomes"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RECENT TRANSACTIONS TABLE (Shared Table Component) -->
+                <div class="table-card">
+                    <div class="table-toolbar">
+                        <div class="toolbar-left">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="tx-search-input" class="search-input" placeholder="Search Transaction / Order ID..." onkeyup="debounceSearch()">
+                            </div>
+
+                            <!-- Risk Filter -->
+                            <select id="tx-filter-risk" class="filter-select" onchange="loadTransactionsTable()">
+                                <option value="all">All Risk Tiers</option>
+                                <option value="Safe">🟢 Safe (&lt;35%)</option>
+                                <option value="Suspicious">🟡 Suspicious (35-70%)</option>
+                                <option value="High Risk">🔴 High Risk (&ge;70%)</option>
+                            </select>
+
+                            <!-- Status Filter -->
+                            <select id="tx-filter-status" class="filter-select" onchange="loadTransactionsTable()">
+                                <option value="all">All Payment Statuses</option>
+                                <option value="COMPLETED">Completed</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="BLOCKED">Blocked</option>
+                                <option value="FAILED">Failed</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+
+                            <button class="btn-action btn-action-outline" onclick="resetTableFilters()">
+                                ↺ Reset
+                            </button>
+                        </div>
+
+                        <div class="toolbar-right">
+                            <button class="btn-action btn-action-outline" onclick="exportTransactionsCSV()">
+                                📥 Export CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="custom-table" id="transactions-table">
+                            <thead>
+                                <tr>
+                                    <th>Transaction ID</th>
+                                    <th>Date &amp; Time (UTC)</th>
+                                    <th>Amount (USD)</th>
+                                    <th>Risk Score</th>
+                                    <th>Risk Level</th>
+                                    <th>Payment Status</th>
+                                    <th style="text-align: right;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <tr>
+                                    <td colspan="7" class="empty-state">
+                                        <div class="empty-icon">⏳</div>
+                                        <div class="empty-title">Loading transactions...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="table-pagination">
+                        <span id="pagination-info">Showing 0 of 0 transactions</span>
+                        <div class="pagination-controls">
+                            <button class="btn-page" id="btn-prev-page" onclick="changePage(-1)" disabled>Previous</button>
+                            <span id="page-num-display" style="padding: 0 8px; font-weight: 600; color: #fff;">1</span>
+                            <button class="btn-page" id="btn-next-page" onclick="changePage(1)" disabled>Next</button>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ================= VIEW 2 & 3: FULL TRANSACTIONS & HISTORY ================= -->
+            <section id="view-transactions" class="view-panel">
+                <div class="chart-card" style="margin-bottom: 20px;">
+                    <div class="chart-header">
+                        <div class="chart-title-box">
+                            <h3>Full Transaction Ledger</h3>
+                            <p>Query, filter, and inspect all payment requests analyzed by the ML engine</p>
+                        </div>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 13px;">
+                        Use the filter controls below to search by unique token, filter by regulatory risk status, or audit historical capture proofs.
+                    </p>
+                </div>
+                <!-- Reuses the transactions table component -->
+                <div id="transactions-container-placeholder"></div>
+            </section>
+
+            <!-- ================= VIEW 4: AI RISK ANALYSIS & EXPLAINABILITY ================= -->
+            <section id="view-ai-risk" class="view-panel">
+                <div class="info-grid">
+                    <!-- ML Model Architecture -->
+                    <div class="info-card">
+                        <h4>🧠 Random Forest Architecture</h4>
+                        <table class="metric-table">
+                            <tr>
+                                <td>Model Type</td>
+                                <td>Random Forest Classifier</td>
+                            </tr>
+                            <tr>
+                                <td>Estimators / Trees</td>
+                                <td>200 Decision Trees</td>
+                            </tr>
+                            <tr>
+                                <td>Validation Strategy</td>
+                                <td>Stratified 80/20 Train/Test Split</td>
+                            </tr>
+                            <tr>
+                                <td>Model Storage</td>
+                                <td>Joblib (models/scam_model.pkl)</td>
+                            </tr>
+                            <tr>
+                                <td>Evaluation Accuracy</td>
+                                <td>66.05%</td>
+                            </tr>
+                            <tr>
+                                <td>Precision / Recall</td>
+                                <td>63.11% / 65.88%</td>
+                            </tr>
+                            <tr>
+                                <td>F1-Score / ROC-AUC</td>
+                                <td>64.47% / 72.23%</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Feature Importances -->
+                    <div class="info-card">
+                        <h4>📊 Input Feature Weight Distribution</h4>
+                        <div class="feature-bar-row">
+                            <div class="feature-bar-label">
+                                <span>Transaction Amount</span>
+                                <strong>45.7%</strong>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: 45.7%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="feature-bar-row">
+                            <div class="feature-bar-label">
+                                <span>Transaction Hour (0-23 UTC)</span>
+                                <strong>22.2%</strong>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: 22.2%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="feature-bar-row">
+                            <div class="feature-bar-label">
+                                <span>Prior Failed Attempts</span>
+                                <strong>17.8%</strong>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: 17.8%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="feature-bar-row">
+                            <div class="feature-bar-label">
+                                <span>International Routing</span>
+                                <strong>8.1%</strong>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: 8.1%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="feature-bar-row">
+                            <div class="feature-bar-label">
+                                <span>New / Unrecognized Device</span>
+                                <strong>6.2%</strong>
+                            </div>
+                            <div class="progress-track">
+                                <div class="progress-fill" style="width: 6.2%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Corridors & Thresholds -->
+                    <div class="info-card">
+                        <h4>⚖️ Operational Security Thresholds</h4>
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px;">
+                            <div style="background: var(--safe-bg); border: 1px solid var(--safe-border); border-radius: 8px; padding: 10px;">
+                                <strong style="color: var(--safe-color);">🟢 SAFE CORRIDOR (Risk &lt; 35%)</strong>
+                                <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+                                    Automated clearance granted. Customer is permitted to continue directly to PayPal Sandbox checkout.
+                                </p>
+                            </div>
+
+                            <div style="background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px; padding: 10px;">
+                                <strong style="color: var(--warn-color);">🟡 SUSPICIOUS CORRIDOR (35% &le; Risk &lt; 70%)</strong>
+                                <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+                                    Checkout held. Requires secondary step-up authentication (SMS/OTP) or manual security review before release.
+                                </p>
+                            </div>
+
+                            <div style="background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: 8px; padding: 10px;">
+                                <strong style="color: var(--danger-color);">🔴 HIGH-RISK CORRIDOR (Risk &ge; 70%)</strong>
+                                <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+                                    Severe fraud probability. Processing is strictly blocked. Account session is flagged to prevent unauthorized withdrawals.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ================= VIEW 5: SETTINGS & SYSTEM STATUS ================= -->
+            <section id="view-settings" class="view-panel">
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>🗄️ Database &amp; Persistence Storage</h4>
+                        <table class="metric-table">
+                            <tr>
+                                <td>Database Engine</td>
+                                <td>SQLite (SQLAlchemy ORM)</td>
+                            </tr>
+                            <tr>
+                                <td>Database Path</td>
+                                <td><code>instance/scamshield.db</code></td>
+                            </tr>
+                            <tr>
+                                <td>Production PostgreSQL</td>
+                                <td>Configured via <code>DATABASE_URL</code></td>
+                            </tr>
+                            <tr>
+                                <td>Persistence Status</td>
+                                <td><span style="color: var(--safe-color); font-weight: 700;">Active &amp; Initialized</span></td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top: 16px; padding: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px;">
+                            <strong style="color: #c7d2fe; font-size: 12.5px;">💡 Render Ephemeral Storage Notice</strong>
+                            <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+                                Render instances feature ephemeral filesystems that reset on redeploy. For permanent production multi-region persistence, connect a managed PostgreSQL database via the <code>DATABASE_URL</code> environment secret.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="info-card">
+                        <h4>💳 PayPal Sandbox Configuration</h4>
+                        <table class="metric-table">
+                            <tr>
+                                <td>Environment</td>
+                                <td>PayPal Sandbox (REST API v2)</td>
+                            </tr>
+                            <tr>
+                                <td>Base URL</td>
+                                <td><code>https://api-m.sandbox.paypal.com</code></td>
+                            </tr>
+                            <tr>
+                                <td>Currency</td>
+                                <td>USD ($)</td>
+                            </tr>
+                            <tr>
+                                <td>Order Capture Protocol</td>
+                                <td>Strict Server-Side Validation</td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" class="btn-action btn-action-primary" onclick="seedDemoData()">
+                                ⚡ Seed 14 Demo Records
+                            </button>
+                            <button type="button" class="btn-action btn-action-outline" onclick="clearDatabaseRecords()" style="color: #f87171; border-color: rgba(239, 68, 68, 0.4);">
+                                🗑️ Clear Database Records
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<!-- ----------------------------------------------------
+     4. TRANSACTION DETAIL MODAL
+     ---------------------------------------------------- -->
+<div class="modal-overlay" id="tx-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <div class="modal-title-box">
+                <h3 id="modal-tx-title">Transaction Details</h3>
+                <p id="modal-tx-id">TX-ID</p>
+            </div>
+            <button class="btn-close" onclick="closeModal()" aria-label="Close modal">&times;</button>
+        </div>
+
+        <div class="modal-body" id="modal-body-content">
+            <!-- Dynamic Content loaded via JS -->
+            <div style="text-align: center; padding: 30px;">Loading transaction details...</div>
+        </div>
+
+        <div class="modal-footer" id="modal-footer-content">
+            <button class="btn-action btn-action-outline" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ----------------------------------------------------
+     5. DASHBOARD JAVASCRIPT LOGIC
+     ---------------------------------------------------- -->
+<script>
+    // State management
+    let currentView = 'overview';
+    let currentDateRange = '7d';
+    let currentRiskFilter = 'all';
+    let currentStatusFilter = 'all';
+    let currentSearchQuery = '';
+    let currentPageOffset = 0;
+    const PAGE_LIMIT = 15;
+    let totalTransactionsCount = 0;
+
+    // Chart.js instances
+    let chartRiskDist = null;
+    let chartDailyVolume = null;
+    let chartRiskTrend = null;
+    let chartPaymentOutcomes = null;
+
+    // Search debounce timer
+    let searchTimer = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initDashboard();
+    });
+
+    function initDashboard() {
+        refreshDashboard();
+    }
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+    }
+
+    function switchView(viewName) {
+        currentView = viewName;
+
+        // Update nav items
+        document.querySelectorAll('.nav-item').forEach(el => {
+            el.classList.toggle('active', el.getAttribute('data-view') === viewName);
+        });
+
+        // Close mobile sidebar if open
+        document.getElementById('sidebar').classList.remove('open');
+
+        // Titles map
+        const titles = {
+            'overview': { title: 'Executive Overview', sub: 'Real-time AI fraud monitoring and transaction intelligence' },
+            'transactions': { title: 'Transactions Ledger', sub: 'Filter, inspect, and audit all evaluated payment attempts' },
+            'history': { title: 'Transaction History', sub: 'Chronological timeline of automated fraud decisions' },
+            'ai-risk': { title: 'AI Risk Analytics & Explainability', sub: 'Random Forest model weights, metrics, and heuristic rule analysis' },
+            'settings': { title: 'System & Gateway Settings', sub: 'Database connectivity, PayPal sandbox credentials, and test seeders' }
+        };
+
+        const t = titles[viewName] || titles['overview'];
+        document.getElementById('view-title').textContent = t.title;
+        document.getElementById('view-subtitle').textContent = t.sub;
+
+        // Toggle views
+        document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+
+        if (viewName === 'overview') {
+            document.getElementById('view-overview').classList.add('active');
+        } else if (viewName === 'transactions' || viewName === 'history') {
+            document.getElementById('view-transactions').classList.add('active');
+            // Move table card to transactions view if needed
+            const tableCard = document.querySelector('.table-card');
+            const targetContainer = document.getElementById('transactions-container-placeholder');
+            if (tableCard && targetContainer && !targetContainer.contains(tableCard)) {
+                targetContainer.appendChild(tableCard);
+            }
+        } else if (viewName === 'ai-risk') {
+            document.getElementById('view-ai-risk').classList.add('active');
+        } else if (viewName === 'settings') {
+            document.getElementById('view-settings').classList.add('active');
+        }
+
+        // If switching back to overview, restore table to overview
+        if (viewName === 'overview') {
+            const tableCard = document.querySelector('.table-card');
+            const overviewSection = document.getElementById('view-overview');
+            if (tableCard && overviewSection && !overviewSection.contains(tableCard)) {
+                overviewSection.appendChild(tableCard);
+            }
+        }
+    }
+
+    function onDateRangeChange(newRange) {
+        currentDateRange = newRange;
+        refreshDashboard();
+    }
+
+    async function refreshDashboard() {
+        await Promise.all([
+            loadStats(),
+            loadCharts(),
+            loadTransactionsTable()
+        ]);
+    }
+
+    // ----------------------------------------------------
+    // API 1: FETCH SUMMARY STATS
+    // ----------------------------------------------------
+    async function loadStats() {
+        try {
+            const res = await fetch(`/api/dashboard/stats?date_range=${currentDateRange}`);
+            const data = await res.json();
+            if (data.status !== 'success') return;
+
+            const m = data.metrics;
+            document.getElementById('kpi-total').textContent = (m.total_transactions || 0).toLocaleString();
+            document.getElementById('kpi-safe').textContent = (m.safe_transactions || 0).toLocaleString();
+            document.getElementById('kpi-suspicious').textContent = (m.suspicious_transactions || 0).toLocaleString();
+            document.getElementById('kpi-high-risk').textContent = (m.high_risk_transactions || 0).toLocaleString();
+            document.getElementById('kpi-completed').textContent = (m.successful_payments || 0).toLocaleString();
+            document.getElementById('kpi-blocked').textContent = (m.blocked_transactions || 0).toLocaleString();
+            document.getElementById('kpi-volume').textContent = `$${(m.total_volume_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            document.getElementById('kpi-avg-risk').textContent = `${(m.avg_risk_score || 0).toFixed(1)}%`;
+        } catch (err) {
+            console.error('Failed to load stats:', err);
+        }
+    }
+
+    // ----------------------------------------------------
+    // API 2: FETCH CHARTS DATA & RENDER
+    // ----------------------------------------------------
+    async function loadCharts() {
+        try {
+            const res = await fetch(`/api/dashboard/charts?date_range=${currentDateRange}`);
+            const data = await res.json();
+            if (data.status !== 'success') return;
+
+            renderRiskDistChart(data.risk_distribution);
+            renderDailyVolumeChart(data.daily_volume);
+            renderRiskTrendChart(data.risk_trend);
+            renderPaymentOutcomesChart(data.payment_outcomes);
+        } catch (err) {
+            console.error('Failed to load charts:', err);
+        }
+    }
+
+    function renderRiskDistChart(riskData) {
+        const ctx = document.getElementById('chart-risk-dist').getContext('2d');
+        if (chartRiskDist) chartRiskDist.destroy();
+
+        const labels = ['Safe (<35%)', 'Suspicious (35-70%)', 'High Risk (≥70%)'];
+        const values = [
+            riskData['Safe'] || 0,
+            riskData['Suspicious'] || 0,
+            riskData['High Risk'] || 0
+        ];
+
+        const total = values.reduce((a, b) => a + b, 0);
+
+        chartRiskDist = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: total === 0 ? [1] : values,
+                    backgroundColor: total === 0 
+                        ? ['#334155'] 
+                        : ['#10b981', '#f59e0b', '#ef4444'],
+                    borderColor: '#10192b',
+                    borderWidth: 3,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 12,
+                            padding: 12,
+                            font: { size: 11, family: 'Inter' }
+                        }
+                    },
+                    tooltip: {
+                        enabled: total > 0,
+                        callbacks: {
+                            label: function(ctx) {
+                                const val = ctx.raw || 0;
+                                const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
+                                return ` ${ctx.label}: ${val} (${pct}%)`;
+                            }
+                        }
+                    }
+                },
+                cutout: '72%'
+            }
+        });
+    }
+
+    function renderDailyVolumeChart(dailyData) {
+        const ctx = document.getElementById('chart-daily-volume').getContext('2d');
+        if (chartDailyVolume) chartDailyVolume.destroy();
+
+        const labels = dailyData.map(d => d.date);
+        const counts = dailyData.map(d => d.count);
+        const volumes = dailyData.map(d => d.volume);
+
+        chartDailyVolume = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.length ? labels : ['No Data'],
+                datasets: [
+                    {
+                        label: 'Transaction Count',
+                        data: counts.length ? counts : [0],
+                        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                        borderColor: '#6366f1',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Volume ($ USD)',
+                        data: volumes.length ? volumes : [0],
+                        type: 'line',
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointBackgroundColor: '#06b6d4',
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: '#94a3b8', font: { size: 11, family: 'Inter' } }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: { color: '#64748b', font: { size: 11 } }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: { color: '#64748b', precision: 0 }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        ticks: {
+                            color: '#06b6d4',
+                            callback: value => `$${value}`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderRiskTrendChart(trendData) {
+        const ctx = document.getElementById('chart-risk-trend').getContext('2d');
+        if (chartRiskTrend) chartRiskTrend.destroy();
+
+        const labels = trendData.labels || [];
+        const scores = trendData.scores || [];
+
+        chartRiskTrend = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels.length ? labels : ['No Activity'],
+                datasets: [
+                    {
+                        label: 'Risk Score (%)',
+                        data: scores.length ? scores : [0],
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168, 85, 247, 0.12)',
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 4,
+                        pointBackgroundColor: function(context) {
+                            const val = context.raw || 0;
+                            if (val < 35) return '#10b981';
+                            if (val < 70) return '#f59e0b';
+                            return '#ef4444';
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: ctx => `Tx ID: ${ctx[0].label}`,
+                            label: ctx => ` Risk Score: ${ctx.raw}%`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: { color: '#64748b', font: { size: 10 } }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: {
+                            color: '#64748b',
+                            callback: value => `${value}%`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderPaymentOutcomesChart(outcomes) {
+        const ctx = document.getElementById('chart-payment-outcomes').getContext('2d');
+        if (chartPaymentOutcomes) chartPaymentOutcomes.destroy();
+
+        const labels = ['Completed', 'Pending', 'Blocked', 'Failed', 'Cancelled'];
+        const values = [
+            outcomes['COMPLETED'] || 0,
+            outcomes['PENDING'] || 0,
+            outcomes['BLOCKED'] || 0,
+            outcomes['FAILED'] || 0,
+            outcomes['CANCELLED'] || 0
+        ];
+
+        const total = values.reduce((a, b) => a + b, 0);
+
+        chartPaymentOutcomes = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: total === 0 ? [1] : values,
+                    backgroundColor: total === 0 
+                        ? ['#334155']
+                        : ['#10b981', '#f59e0b', '#ef4444', '#dc2626', '#64748b'],
+                    borderColor: '#10192b',
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 10,
+                            padding: 10,
+                            font: { size: 10.5, family: 'Inter' }
+                        }
+                    }
+                },
+                cutout: '68%'
+            }
+        });
+    }
+
+    // ----------------------------------------------------
+    // API 3: TRANSACTIONS TABLE & PAGINATION
+    // ----------------------------------------------------
+    async function loadTransactionsTable() {
+        const risk = document.getElementById('tx-filter-risk').value;
+        const status = document.getElementById('tx-filter-status').value;
+        const search = document.getElementById('tx-search-input').value.trim();
+
+        const url = `/api/dashboard/transactions?date_range=${currentDateRange}&risk=${encodeURIComponent(risk)}&status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}&limit=${PAGE_LIMIT}&offset=${currentPageOffset}`;
+
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.status !== 'success') return;
+
+            totalTransactionsCount = data.total;
+            renderTableRows(data.transactions);
+            updatePaginationControls(data.total, data.offset, data.limit);
+        } catch (err) {
+            console.error('Failed to load transactions table:', err);
+            document.getElementById('table-body').innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        <div class="empty-icon">⚠️</div>
+                        <div class="empty-title">Failed to load transactions</div>
+                        <div class="empty-desc">Check database connection or network connectivity.</div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    function renderTableRows(transactions) {
+        const tbody = document.getElementById('table-body');
+        if (!transactions || transactions.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        <div class="empty-icon">📭</div>
+                        <div class="empty-title">No transactions found</div>
+                        <div class="empty-desc">No records match your active filters. Try resetting filters or seed demo records.</div>
+                        <button class="btn-action btn-action-primary" onclick="seedDemoData()">⚡ Seed Demo Records</button>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        let html = '';
+        transactions.forEach(tx => {
+            const shortId = tx.transaction_id ? tx.transaction_id.substring(0, 10) + '...' : 'N/A';
+            const riskClass = (tx.risk_classification || 'Safe').toLowerCase().replace(' ', '-');
+            
+            let riskBadgeClass = 'risk-pill-safe';
+            let riskIcon = '🟢';
+            if (tx.risk_classification === 'Suspicious') {
+                riskBadgeClass = 'risk-pill-suspicious';
+                riskIcon = '🟡';
+            } else if (tx.risk_classification === 'High Risk') {
+                riskBadgeClass = 'risk-pill-high';
+                riskIcon = '🔴';
+            }
+
+            let payBadgeClass = 'pay-other';
+            if (tx.payment_status === 'COMPLETED') payBadgeClass = 'pay-completed';
+            else if (tx.payment_status === 'PENDING') payBadgeClass = 'pay-pending';
+            else if (tx.payment_status && tx.payment_status.startsWith('BLOCKED')) payBadgeClass = 'pay-blocked';
+
+            html += `
+                <tr>
+                    <td>
+                        <span class="tx-id-badge">
+                            ${shortId}
+                            <button class="btn-copy" onclick="copyToClipboard('${tx.transaction_id}')" title="Copy full ID">📋</button>
+                        </span>
+                    </td>
+                    <td style="color: var(--text-dim); font-size: 12px;">
+                        ${tx.created_at_formatted || 'N/A'}
+                    </td>
+                    <td>
+                        <span class="amount-text">$${tx.amount.toFixed(2)}</span>
+                        <span style="font-size: 11px; color: var(--text-dim);">${tx.currency}</span>
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-weight: 700; font-size: 13px; font-family: var(--font-mono);">${tx.risk_score.toFixed(1)}%</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="risk-pill ${riskBadgeClass}">
+                            ${riskIcon} ${tx.risk_classification}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="pay-pill ${payBadgeClass}">
+                            ${tx.payment_status}
+                        </span>
+                    </td>
+                    <td style="text-align: right;">
+                        <button class="btn-inspect" onclick="inspectTransaction('${tx.transaction_id}')">
+                            Inspect 🔍
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function updatePaginationControls(total, offset, limit) {
+        const start = total === 0 ? 0 : offset + 1;
+        const end = Math.min(offset + limit, total);
+        document.getElementById('pagination-info').textContent = `Showing ${start} to ${end} of ${total} transactions`;
+
+        const currentPage = Math.floor(offset / limit) + 1;
+        document.getElementById('page-num-display').textContent = currentPage;
+
+        document.getElementById('btn-prev-page').disabled = offset <= 0;
+        document.getElementById('btn-next-page').disabled = offset + limit >= total;
+    }
+
+    function changePage(direction) {
+        currentPageOffset += direction * PAGE_LIMIT;
+        if (currentPageOffset < 0) currentPageOffset = 0;
+        loadTransactionsTable();
+    }
+
+    function debounceSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            currentPageOffset = 0;
+            loadTransactionsTable();
+        }, 300);
+    }
+
+    function resetTableFilters() {
+        document.getElementById('tx-search-input').value = '';
+        document.getElementById('tx-filter-risk').value = 'all';
+        document.getElementById('tx-filter-status').value = 'all';
+        currentPageOffset = 0;
+        loadTransactionsTable();
+    }
+
+    // ----------------------------------------------------
+    // API 4: TRANSACTION INSPECTION MODAL
+    // ----------------------------------------------------
+    async function inspectTransaction(txId) {
+        const modal = document.getElementById('tx-modal');
+        const modalBody = document.getElementById('modal-body-content');
+        const modalFooter = document.getElementById('modal-footer-content');
+        const modalId = document.getElementById('modal-tx-id');
+
+        modal.classList.add('active');
+        modalId.textContent = txId;
+        modalBody.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--text-muted);">Fetching details from database...</div>`;
+
+        try {
+            const res = await fetch(`/api/dashboard/transactions/${encodeURIComponent(txId)}`);
+            const data = await res.json();
+            if (data.status !== 'success') {
+                modalBody.innerHTML = `<div class="empty-state"><div class="empty-title">Error</div><div>${data.error || 'Failed to retrieve transaction.'}</div></div>`;
+                return;
+            }
+
+            const tx = data.transaction;
+            const exp = data.explainability;
+            const rec = exp.recommendation;
+
+            let recClass = 'rec-safe';
+            if (rec.severity === 'suspicious') recClass = 'rec-warn';
+            else if (rec.severity === 'danger') recClass = 'rec-danger';
+
+            modalBody.innerHTML = `
+                <!-- Top Verdict Banner -->
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Calculated Fraud Risk</div>
+                        <div style="font-size: 28px; font-weight: 800; font-family: var(--font-mono); color: #fff;">${tx.risk_score.toFixed(2)}%</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Risk Classification</div>
+                        <span class="risk-pill ${tx.risk_classification === 'Safe' ? 'risk-pill-safe' : (tx.risk_classification === 'Suspicious' ? 'risk-pill-suspicious' : 'risk-pill-high')}">
+                            ${tx.risk_classification}
+                        </span>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Decision Status</div>
+                        <strong style="color: #fff; font-size: 13px;">${tx.transaction_status}</strong>
+                    </div>
+                    <div>
+                        <div style="font-size: 11px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Payment Status</div>
+                        <strong style="color: #38bdf8; font-size: 13px;">${tx.payment_status}</strong>
+                    </div>
+                </div>
+
+                <!-- Behavioral Features -->
+                <div>
+                    <div class="modal-section-title">Behavioral Input Features</div>
+                    <div class="detail-grid">
+                        <div class="detail-box">
+                            <div class="detail-label">Transaction Amount</div>
+                            <div class="detail-value">$${tx.amount.toFixed(2)} ${tx.currency}</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Transaction Hour</div>
+                            <div class="detail-value">${tx.transaction_hour}:00 UTC</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Geographic Route</div>
+                            <div class="detail-value">${tx.international ? '🌐 Cross-Border / International' : '🏠 Domestic'}</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">Device Profile</div>
+                            <div class="detail-value">${tx.new_device ? '📱 Unrecognized / New Hardware' : '💻 Trusted Device'}</div>
+                        </div>
+                        <div class="detail-box" style="grid-column: span 2;">
+                            <div class="detail-label">Prior Failed Attempts</div>
+                            <div class="detail-value">${tx.failed_attempts} Prior Unsuccessful Attempt(s)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Explainable Heuristics -->
+                <div>
+                    <div class="modal-section-title">Explainable Risk Indicators (Contextual Heuristics)</div>
+                    <div class="indicators-list">
+                        ${exp.indicators.map(ind => `
+                            <div class="indicator-item">
+                                <span class="indicator-icon">${ind.icon}</span>
+                                <div style="flex: 1;">
+                                    <div class="indicator-title">${ind.title} <span style="font-size: 10px; color: var(--text-dim); font-weight: 400;">(${ind.category})</span></div>
+                                    <div class="indicator-desc">${ind.description}</div>
+                                </div>
+                                <span style="font-size: 11px; font-weight: 600; color: #a5b4fc; font-family: var(--font-mono);">${ind.metric}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Recommended Security Protocol -->
+                <div>
+                    <div class="modal-section-title">Recommended Protocol</div>
+                    <div class="rec-card ${recClass}">
+                        <div class="rec-header">🛡️ ${rec.title} (${rec.badge})</div>
+                        <div class="rec-body">${rec.guidance}</div>
+                    </div>
+                </div>
+
+                <!-- Gateway References -->
+                <div>
+                    <div class="modal-section-title">Gateway References</div>
+                    <div class="detail-grid">
+                        <div class="detail-box">
+                            <div class="detail-label">PayPal Order ID</div>
+                            <div class="detail-value" style="font-family: var(--font-mono); font-size: 12px;">${tx.paypal_order_id || 'Not generated'}</div>
+                        </div>
+                        <div class="detail-box">
+                            <div class="detail-label">PayPal Capture ID</div>
+                            <div class="detail-value" style="font-family: var(--font-mono); font-size: 12px;">${tx.paypal_capture_id || 'Not captured'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Footer buttons
+            if (tx.is_payable && tx.payment_url) {
+                modalFooter.innerHTML = `
+                    <a href="${tx.payment_url}" class="btn-action btn-action-primary">Proceed to PayPal Checkout →</a>
+                    <button class="btn-action btn-action-outline" onclick="closeModal()">Close</button>
+                `;
+            } else {
+                modalFooter.innerHTML = `
+                    <button class="btn-action btn-action-outline" onclick="closeModal()">Close</button>
+                `;
+            }
+
+        } catch (err) {
+            console.error('Failed to load transaction details:', err);
+            modalBody.innerHTML = `<div class="empty-state">Failed to load details.</div>`;
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('tx-modal').classList.remove('active');
+    }
+
+    // ----------------------------------------------------
+    // CSV EXPORT
+    // ----------------------------------------------------
+    async function exportTransactionsCSV() {
+        try {
+            const res = await fetch(`/api/dashboard/transactions?date_range=all&limit=1000`);
+            const data = await res.json();
+            if (!data.transactions || data.transactions.length === 0) {
+                alert('No transactions available to export.');
+                return;
+            }
+
+            const headers = ['Transaction ID', 'Created At (UTC)', 'Amount (USD)', 'Risk Score (%)', 'Risk Tier', 'Decision Status', 'Payment Status', 'PayPal Order ID', 'PayPal Capture ID'];
+            const rows = data.transactions.map(t => [
+                t.transaction_id,
+                t.created_at_formatted,
+                t.amount.toFixed(2),
+                t.risk_score.toFixed(2),
+                t.risk_classification,
+                t.transaction_status,
+                t.payment_status,
+                t.paypal_order_id || '',
+                t.paypal_capture_id || ''
+            ]);
+
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `scamshield_transactions_${new Date().toISOString().slice(0, 10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error('CSV export failed:', err);
+            alert('Failed to export CSV.');
+        }
+    }
+
+    // ----------------------------------------------------
+    // SEED & CLEAR DEMO RECORDS
+    // ----------------------------------------------------
+    async function seedDemoData() {
+        if (!confirm('Seed 14 realistic demo transactions scored by the Random Forest model?')) return;
+        try {
+            const res = await fetch('/api/dashboard/seed-demo', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                alert(`✅ ${data.message}`);
+                refreshDashboard();
+            } else {
+                alert(`❌ ${data.error || 'Failed to seed records'}`);
+            }
+        } catch (err) {
+            console.error('Seed demo error:', err);
+            alert('Failed to seed demo records.');
+        }
+    }
+
+    async function clearDatabaseRecords() {
+        if (!confirm('⚠️ Are you sure you want to clear all transactions from the database? This cannot be undone.')) return;
+        try {
+            const res = await fetch('/api/dashboard/clear-demo', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'success') {
+                alert(`🗑️ ${data.message}`);
+                refreshDashboard();
+            } else {
+                alert(`❌ ${data.error || 'Failed to clear records'}`);
+            }
+        } catch (err) {
+            console.error('Clear database error:', err);
+            alert('Failed to clear database records.');
+        }
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Copied to clipboard: ' + text);
+        }).catch(() => {
+            prompt('Copy transaction ID:', text);
+        });
+    }
+
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+</script>
+
+</body>
+</html>
