@@ -17,6 +17,12 @@ venv.bak/
 .env.*
 !.env.example
 
+# Database & SQLite storage (persisted outside VCS)
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
 # IDE & Editor files
 .vscode/
 .idea/
