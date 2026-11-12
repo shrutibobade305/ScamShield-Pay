@@ -4,173 +4,493 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>ScamShield Pay | AI Fraud Protection</title>
+    <title>ScamShield Pay | AI-Powered Payment Fraud Protection</title>
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='style.css') }}">
+    <meta name="description" content="Autonomous payment fraud detection powered by Scikit-Learn Random Forest and secured with PayPal Orders v2 Sandbox.">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
 <body>
 
+<!-- Master Navigation Bar -->
 <header class="navbar">
-    <div class="logo">🛡️ ScamShield Pay</div>
+    <a href="/" class="logo">
+        <span class="logo-shield">🛡️</span>
+        <span>ScamShield Pay</span>
+        <span class="logo-badge">FINTECH AI</span>
+    </a>
 
     <nav>
         <a href="/">Home</a>
-        <a href="#analyzer">Scan &amp; Pay</a>
+        <a href="#analyzer">Analyzer</a>
+        <a href="#pipeline">How It Works</a>
         <a href="#features">Features</a>
+        <a href="#tech-stack">Tech Stack</a>
         <a href="{{ url_for('transactions_history') }}">Transactions</a>
         <a href="{{ url_for('dashboard') }}" class="nav-admin-link">📊 Admin Dashboard</a>
     </nav>
 </header>
 
+<!-- Hero Section with Floating Interactive Preview -->
 <section class="hero">
-    <div class="hero-content">
-        <span class="tag">AI POWERED PAYMENT SECURITY</span>
+    <div class="hero-layout">
+        
+        <div class="hero-content">
+            <span class="tag">⚡ Real-Time Payment Firewall • Random Forest ML</span>
 
-        <h1>
-            Protect Every <span>Payment.</span><br>
-            Detect Every Scam.
-        </h1>
+            <h1>
+                Protect Every <span class="gradient-text">Payment.</span><br>
+                Neutralize Every Scam.
+            </h1>
 
-        <p>
-            ScamShield Pay uses machine learning to analyze
-            transactions in real time and protect you from fraudulent payment requests.
-        </p>
+            <p>
+                ScamShield Pay is an autonomous AI fraud protection engine that intercepts payment transactions in real time. Combining a 200-tree Random Forest classifier with contextual behavioral heuristics, step-up MFA verification, and PayPal Sandbox settlement, it blocks fraudulent checkouts before funds leave the account.
+            </p>
 
-        <a href="#analyzer" class="btn-primary">
-            Analyze Transaction →
-        </a>
+            <div class="hero-actions">
+                <a href="#analyzer" class="btn-primary">
+                    <span>⚡</span> Launch Risk Analyzer
+                </a>
+                <a href="{{ url_for('dashboard') }}" class="btn-secondary">
+                    <span>📊</span> Explore Admin Dashboard
+                </a>
+                <a href="{{ url_for('transactions_history') }}" class="btn-outline">
+                    <span>📜</span> View Audit Ledger
+                </a>
+            </div>
+
+            <div class="hero-trust-row">
+                <div class="trust-item">
+                    <span class="icon">✓</span> PayPal Orders v2 REST API
+                </div>
+                <div class="trust-item">
+                    <span class="icon">✓</span> Scikit-Learn Random Forest
+                </div>
+                <div class="trust-item">
+                    <span class="icon">✓</span> Zero Client Trust Architecture
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Live Scan Demo Card -->
+        <div class="hero-card-preview">
+            <div class="preview-header">
+                <div>
+                    <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px;">Inference Node</span>
+                    <h3 style="font-size: 16px; font-weight: 800; color: #fff; margin-top: 2px;">Fraud Guard Sentinel</h3>
+                </div>
+                <div class="preview-live-pill">
+                    <span class="preview-pulse-dot"></span>
+                    <span>Model Online</span>
+                </div>
+            </div>
+
+            <div class="preview-stats-grid">
+                <div class="preview-stat-box">
+                    <div class="preview-stat-label">Model Architecture</div>
+                    <div class="preview-stat-value" style="font-size: 14px; color: #a5b4fc;">Random Forest</div>
+                </div>
+                <div class="preview-stat-box">
+                    <div class="preview-stat-label">Decision Trees</div>
+                    <div class="preview-stat-value">200 Estimators</div>
+                </div>
+                <div class="preview-stat-box">
+                    <div class="preview-stat-label">Inference Latency</div>
+                    <div class="preview-stat-value" style="color: #4ade80;">&lt; 15 ms</div>
+                </div>
+                <div class="preview-stat-box">
+                    <div class="preview-stat-label">Validation Split</div>
+                    <div class="preview-stat-value" style="font-size: 14px;">Stratified 80/20</div>
+                </div>
+            </div>
+
+            <div class="preview-gauge-row">
+                <div>
+                    <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">Gating Policy</span>
+                    <div style="font-size: 13.5px; font-weight: 700; color: #38bdf8; margin-top: 2px;">
+                        3-Tier Threshold Logic
+                    </div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Safe (&lt;35%) • Review (35-70%) • Block (&ge;70%)</span>
+                </div>
+                <div style="text-align: right;">
+                    <span style="font-size: 20px;">🛡️</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Counters Bar -->
+    <div class="hero-counters-bar">
+        <div>
+            <div class="counter-item-title">200</div>
+            <div class="counter-item-sub">Ensemble Decision Trees</div>
+        </div>
+        <div>
+            <div class="counter-item-title">&lt; 15ms</div>
+            <div class="counter-item-sub">Real-Time Scoring Latency</div>
+        </div>
+        <div>
+            <div class="counter-item-title">100%</div>
+            <div class="counter-item-sub">Server-Controlled PayPal Gating</div>
+        </div>
+        <div>
+            <div class="counter-item-title">SHA-256</div>
+            <div class="counter-item-sub">Cryptographic MFA Challenge</div>
+        </div>
     </div>
 </section>
 
+<!-- Transaction Risk Analyzer Section -->
 <section class="analyzer" id="analyzer">
 
     <div class="section-heading">
-        <span class="tag">SMART FRAUD DETECTION</span>
+        <span class="tag">AI FRAUD DETECTION ENGINE</span>
         <h2>Transaction Risk Analyzer</h2>
-        <p>Enter transaction details to assess fraud risk before proceeding to payment.</p>
+        <p>Submit payment parameters to evaluate real-time fraud probability before order creation.</p>
     </div>
 
     <!-- Quick Test Scenarios Bar for Testing & Hackathon Evaluation -->
     <div class="preset-box">
-        <span class="preset-label">⚡ Quick Test Scenarios (1-Click Fill):</span>
+        <span class="preset-label">⚡ Evaluation Scenarios (1-Click Pre-fill):</span>
         <div class="preset-buttons">
             <button type="button" class="btn-preset btn-preset-safe" onclick="fillScenario('safe')">
-                🟢 Safe Demo ($45)
+                <span>🟢</span> Safe Demo ($45 • Domestic)
             </button>
             <button type="button" class="btn-preset btn-preset-suspicious" onclick="fillScenario('suspicious')">
-                🟡 Suspicious Demo ($15,000)
+                <span>🟡</span> Suspicious Demo ($12,000 • New Device)
             </button>
             <button type="button" class="btn-preset btn-preset-danger" onclick="fillScenario('danger')">
-                🔴 High Risk Demo ($35,000)
+                <span>🔴</span> High Risk Demo ($35,000 • 5 Fails)
             </button>
         </div>
     </div>
 
-    <form action="{{ url_for('predict') }}"
-          method="POST"
-          class="analyzer-form">
+    <!-- Analyzer Form Card -->
+    <div class="analyzer-form-card">
+        <form action="{{ url_for('predict') }}"
+              method="POST"
+              class="analyzer-form"
+              id="risk-analyzer-form">
 
-        <div class="form-group">
-            <label for="amount">Transaction Amount (USD)</label>
-            <input
-                type="number"
-                id="amount"
-                name="amount"
-                min="0.01"
-                max="10000000"
-                step="0.01"
-                placeholder="e.g. 150.00"
-                required>
-            <small class="field-hint">Amounts &gt;$20,000 carry elevated risk weights.</small>
-        </div>
+            <div class="form-group">
+                <div class="form-label-wrap">
+                    <label for="amount">Transaction Amount</label>
+                    <span class="label-badge">Currency: USD</span>
+                </div>
+                <div class="input-wrap">
+                    <span class="input-icon-adornment">$</span>
+                    <input
+                        type="number"
+                        id="amount"
+                        name="amount"
+                        class="has-adornment"
+                        min="0.01"
+                        max="10000000"
+                        step="0.01"
+                        placeholder="e.g. 125.00"
+                        required>
+                </div>
+                <small class="field-hint">Amounts &gt;$20,000 trigger high-value fraud spike weights.</small>
+            </div>
 
-        <div class="form-group">
-            <label for="transaction_hour">Transaction Hour (0-23 UTC)</label>
-            <input
-                type="number"
-                id="transaction_hour"
-                name="transaction_hour"
-                min="0"
-                max="23"
-                value="14"
-                required>
-            <small class="field-hint">Off-peak nighttime (23:00 - 04:00) flags temporal risk.</small>
-        </div>
+            <div class="form-group">
+                <div class="form-label-wrap">
+                    <label for="transaction_hour">Transaction Hour (UTC)</label>
+                    <span class="label-badge">0 to 23 Hours</span>
+                </div>
+                <input
+                    type="number"
+                    id="transaction_hour"
+                    name="transaction_hour"
+                    min="0"
+                    max="23"
+                    value="14"
+                    required>
+                <small class="field-hint">Off-peak nighttime (23:00 - 04:00 UTC) carries elevated takeover risk.</small>
+            </div>
 
-        <div class="form-group">
-            <label for="international">International Transaction?</label>
-            <select id="international" name="international">
-                <option value="0">No (Domestic Routing)</option>
-                <option value="1">Yes (Cross-Border Routing)</option>
-            </select>
-            <small class="field-hint">Cross-border transfers have higher baseline exposure.</small>
-        </div>
+            <div class="form-group">
+                <div class="form-label-wrap">
+                    <label for="international">Geographic Routing</label>
+                    <span class="label-badge">Border Flag</span>
+                </div>
+                <select id="international" name="international">
+                    <option value="0">No — Domestic Clearing Jurisdiction</option>
+                    <option value="1">Yes — Cross-Border International Routing</option>
+                </select>
+                <small class="field-hint">Cross-border transactions exhibit higher baseline chargeback exposure.</small>
+            </div>
 
-        <div class="form-group">
-            <label for="new_device">New Device Detected?</label>
-            <select id="new_device" name="new_device">
-                <option value="0">No (Recognized Device Profile)</option>
-                <option value="1">Yes (Unrecognized Hardware Fingerprint)</option>
-            </select>
-            <small class="field-hint">Unrecognized devices indicate potential session hijacking.</small>
-        </div>
+            <div class="form-group">
+                <div class="form-label-wrap">
+                    <label for="new_device">Device Fingerprint Profile</label>
+                    <span class="label-badge">Hardware ID</span>
+                </div>
+                <select id="new_device" name="new_device">
+                    <option value="0">No — Known Trusted Device Fingerprint</option>
+                    <option value="1">Yes — Unrecognized Device / New Hardware</option>
+                </select>
+                <small class="field-hint">Unrecognized hardware triggers account takeover defense heuristics.</small>
+            </div>
 
-        <div class="form-group full-width">
-            <label for="failed_attempts">Previous Failed Attempts (0-20)</label>
-            <input
-                type="number"
-                id="failed_attempts"
-                name="failed_attempts"
-                min="0"
-                max="20"
-                value="0"
-                required>
-            <small class="field-hint">≥3 failed attempts trigger high velocity anomaly alerts.</small>
-        </div>
+            <div class="form-group full-width">
+                <div class="form-label-wrap">
+                    <label for="failed_attempts">Prior Failed Authentication Attempts</label>
+                    <span class="label-badge">Velocity Metric (0 - 20)</span>
+                </div>
+                <input
+                    type="number"
+                    id="failed_attempts"
+                    name="failed_attempts"
+                    min="0"
+                    max="20"
+                    value="0"
+                    required>
+                <small class="field-hint">&ge;3 prior failures indicate brute-force or credential stuffing patterns.</small>
+            </div>
 
-        <button type="submit" class="btn-primary full-width">
-            Analyze Transaction →
-        </button>
+            <div class="form-group full-width" style="margin-top: 8px;">
+                <button type="submit" class="btn-analyze-submit" id="btn-submit-analyzer">
+                    <span>🔍</span> Analyze Transaction Risk →
+                </button>
+                <small style="text-align: center; display: block; margin-top: 10px; color: var(--text-dim); font-size: 11.5px;">
+                    🛡️ Evaluated with Random Forest Classifier + Rule-Based Operational Security Heuristics.
+                </small>
+            </div>
 
-    </form>
+        </form>
+    </div>
 
 </section>
 
+<!-- Scanning / Analyzing Animation Modal -->
+<div class="scanning-modal" id="scanning-modal">
+    <div class="scanning-box">
+        <div class="scan-radar"></div>
+        <div class="scan-status-text" id="scan-status-text">Extracting Behavioral Vectors...</div>
+        <div class="scan-step-hint" id="scan-step-hint">Passing input features through 200 Random Forest decision trees.</div>
+    </div>
+</div>
+
+<!-- How It Works Security Pipeline -->
+<section class="pipeline-section" id="pipeline">
+    <div class="section-heading">
+        <span class="tag">DEFENSE-IN-DEPTH ARCHITECTURE</span>
+        <h2>How ScamShield Pay Works</h2>
+        <p>A multi-tiered security pipeline designed to stop scams before checkout clearance.</p>
+    </div>
+
+    <div class="pipeline-grid">
+        
+        <div class="step-card">
+            <div class="step-badge">01</div>
+            <h3 class="step-title">Signal Extraction</h3>
+            <p class="step-desc">
+                Extracts multi-dimensional features: monetary value, temporal velocity, hardware fingerprints, and routing geography.
+            </p>
+        </div>
+
+        <div class="step-card">
+            <div class="step-badge">02</div>
+            <h3 class="step-title">Random Forest Inference</h3>
+            <p class="step-desc">
+                Evaluates non-linear feature interactions across 200 decision trees to produce an empirical probability score.
+            </p>
+        </div>
+
+        <div class="step-card">
+            <div class="step-badge">03</div>
+            <h3 class="step-title">Auditable Policy Review</h3>
+            <p class="step-desc">
+                Combines ML probabilities with explainable heuristics: Safe (&lt;35%), Suspicious (35-70% MFA hold), or High-Risk (&ge;70% block).
+            </p>
+        </div>
+
+        <div class="step-card">
+            <div class="step-badge">04</div>
+            <h3 class="step-title">PayPal Settlement Guard</h3>
+            <p class="step-desc">
+                Orders v2 REST API only issues orders for approved transactions, with strict idempotent capture and amount validation.
+            </p>
+        </div>
+
+    </div>
+</section>
+
+<!-- Feature Highlights -->
 <section class="features" id="features">
 
     <div class="section-heading">
-        <span class="tag">WHY SCAMSHIELD PAY?</span>
-        <h2>Intelligent Payment Protection</h2>
+        <span class="tag">CORE CAPABILITIES</span>
+        <h2>Intelligent Payment Protection Features</h2>
+        <p>Built from the ground up for modern fintech applications and payment providers.</p>
     </div>
 
     <div class="feature-grid">
 
         <div class="feature-card">
-            <div class="feature-icon">🤖</div>
-            <h3>AI Fraud Detection</h3>
-            <p>Trained Random Forest Classifier models behavioral transaction signals.</p>
+            <div class="feature-icon-wrap">🤖</div>
+            <h3>Ensemble Machine Learning</h3>
+            <p>
+                Trained Random Forest Classifier with stratified splitting prevents data leakage and delivers consistent non-linear fraud scoring across complex transaction scenarios.
+            </p>
         </div>
 
         <div class="feature-card">
-            <div class="feature-icon">📊</div>
-            <h3>3-Tier Risk Scoring</h3>
-            <p>Immediate classification into Safe (&lt;35%), Suspicious (35-70%), or High Risk (≥70%).</p>
+            <div class="feature-icon-wrap">🔍</div>
+            <h3>Explainable AI (XAI)</h3>
+            <p>
+                Clearly distinguishes empirical model probabilities from human-readable behavioral heuristics, giving compliance teams transparent operational visibility into every decision.
+            </p>
         </div>
 
         <div class="feature-card">
-            <div class="feature-icon">🔒</div>
-            <h3>PayPal Sandbox Guard</h3>
-            <p>Strict server-side gating ensures only approved transactions can access checkout.</p>
+            <div class="feature-icon-wrap">🔐</div>
+            <h3>Step-Up MFA Challenge</h3>
+            <p>
+                Suspicious transactions trigger a server-controlled 6-digit OTP verification challenge with timing-safe SHA-256 hashing, attempt limits, and 10-minute expiration.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon-wrap">💳</div>
+            <h3>PayPal Orders v2 Integration</h3>
+            <p>
+                Zero-trust backend gating creates PayPal orders strictly after server clearance, tying reference IDs and amounts with deterministic idempotency keys.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon-wrap">📜</div>
+            <h3>Persistent SQLite Audit Ledger</h3>
+            <p>
+                Every evaluated payment is permanently archived in SQLite via Flask-SQLAlchemy with complete timestamps, risk scores, status transitions, and capture IDs.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon-wrap">📊</div>
+            <h3>Fintech Operations Dashboard</h3>
+            <p>
+                Real-time admin console featuring Chart.js visualizers, KPI summary metrics, transaction audit filters, and CSV export capabilities for fraud analysts.
+            </p>
         </div>
 
     </div>
 
 </section>
 
+<!-- Technology Stack Section -->
+<section class="tech-section" id="tech-stack">
+
+    <div class="section-heading">
+        <span class="tag">TECHNOLOGY ARCHITECTURE</span>
+        <h2>Enterprise-Grade Technology Stack</h2>
+        <p>Built using robust open-source foundations and industry-standard security protocols.</p>
+    </div>
+
+    <div class="tech-grid">
+
+        <div class="tech-card">
+            <div class="tech-icon">🐍</div>
+            <div>
+                <div class="tech-name">Python 3.10 &amp; Flask</div>
+                <div class="tech-desc">Microframework handling REST endpoints, input sanitization, and server-side payment gating.</div>
+            </div>
+        </div>
+
+        <div class="tech-card">
+            <div class="tech-icon">🌲</div>
+            <div>
+                <div class="tech-name">Scikit-Learn Random Forest</div>
+                <div class="tech-desc">200-tree ensemble classifier compressed with Joblib for rapid low-latency inference.</div>
+            </div>
+        </div>
+
+        <div class="tech-card">
+            <div class="tech-icon">💾</div>
+            <div>
+                <div class="tech-name">SQLite &amp; SQLAlchemy ORM</div>
+                <div class="tech-desc">ACID-compliant relational persistence layer with migration safeguards and indexing.</div>
+            </div>
+        </div>
+
+        <div class="tech-card">
+            <div class="tech-icon">🌐</div>
+            <div>
+                <div class="tech-name">PayPal Sandbox REST API</div>
+                <div class="tech-desc">Orders v2 capture protocol with OAuth2 token caching, reference binding, and idempotency.</div>
+            </div>
+        </div>
+
+        <div class="tech-card">
+            <div class="tech-icon">📈</div>
+            <div>
+                <div class="tech-name">Chart.js 4.4 Analytics</div>
+                <div class="tech-desc">Interactive responsive charts visualizing risk distribution, payment outcomes, and volume velocity.</div>
+            </div>
+        </div>
+
+        <div class="tech-card">
+            <div class="tech-icon">🛡️</div>
+            <div>
+                <div class="tech-name">Cryptographic Defense</div>
+                <div class="tech-desc">SHA-256 token hashing, timing-safe equality, rate-limiting, and auditable MFA policies.</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- PayPal Sandbox Showcase -->
+    <div class="paypal-showcase">
+        <div>
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #38bdf8; margin-bottom: 6px;">
+                Verified Payment Gateway
+            </div>
+            <h3 class="paypal-showcase-title">PayPal Sandbox Integration Architecture</h3>
+            <p class="paypal-showcase-desc">
+                ScamShield Pay operates as an authoritative security proxy in front of PayPal. The frontend JavaScript SDK never initiates orders directly; instead, orders are generated server-side using OAuth 2.0 bearer authentication only after verifying database clearance. Idempotency headers (<code style="color: #a5b4fc;">PayPal-Request-Id</code>) prevent duplicate charges.
+            </p>
+            <div style="margin-top: 20px;">
+                <a href="#analyzer" class="btn-primary" style="font-size: 13.5px; padding: 10px 20px;">
+                    Test Payment Sandbox Flow →
+                </a>
+            </div>
+        </div>
+
+        <div class="paypal-flow-box">
+            <div class="flow-step-line"><span>1.</span> <span>Client submits payment details</span></div>
+            <div class="flow-step-line"><span>2.</span> <span><strong>ML &amp; Rules Engine</strong> assesses risk</span></div>
+            <div class="flow-step-line"><span>3.</span> <span>Server blocks or requires MFA challenge</span></div>
+            <div class="flow-step-line"><span>4.</span> <span>Clearance triggers <strong>PayPal Orders v2</strong></span></div>
+            <div class="flow-step-line"><span>5.</span> <span>Buyer approves Sandbox checkout</span></div>
+            <div class="flow-step-line"><span>6.</span> <span>Server captures order &amp; archives receipt</span></div>
+        </div>
+    </div>
+
+</section>
+
+<!-- Footer -->
 <footer>
-    <p>© 2026 ScamShield Pay. AI-Powered Payment Protection.</p>
+    <div class="footer-inner">
+        <div>
+            <strong style="color: #fff; font-size: 14px;">🛡️ ScamShield Pay</strong>
+            <span style="margin-left: 8px; color: var(--text-dim);">• AI-Powered Payment Protection System</span>
+        </div>
+        <div class="footer-links">
+            <a href="/">Home</a>
+            <a href="#analyzer">Risk Analyzer</a>
+            <a href="{{ url_for('transactions_history') }}">Ledger</a>
+            <a href="{{ url_for('dashboard') }}">Admin Dashboard</a>
+        </div>
+    </div>
 </footer>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>

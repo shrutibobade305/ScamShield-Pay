@@ -426,7 +426,10 @@
 
     <!-- Header Navbar -->
     <header class="navbar">
-        <div class="logo">🛡️ ScamShield Pay</div>
+        <a href="/" class="logo">
+            <span class="logo-shield">🛡️</span>
+            <span>ScamShield Pay</span>
+        </a>
         <nav>
             <a href="/">Home</a>
             <a href="{{ url_for('transactions_history') }}">Transactions</a>
@@ -786,3 +789,4 @@
     </script>
 </body>
 </html>
+

@@ -3,102 +3,175 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transaction Risk Analysis | ScamShield Pay</title>
+    <title>Risk Assessment Report | ScamShield Pay</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
     <style>
+        .result-page-container {
+            flex: 1;
+            padding: 40px 16px 70px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
         .result-wrapper {
-            max-width: 760px;
-            width: calc(100% - 32px);
-            margin: 45px auto;
-            padding: 35px 28px;
-            border-radius: 20px;
-            background: #151a26;
+            max-width: 820px;
+            width: 100%;
+            padding: 40px clamp(20px, 4vw, 44px);
+            border-radius: 22px;
+            background: var(--bg-card);
             color: #fff;
             text-align: center;
             box-sizing: border-box;
-            border: 1px solid #273449;
-            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+            border: 1px solid var(--border);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Top Accent Highlight */
+        .result-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: {% if result.decision == "approved" %}linear-gradient(90deg, #10b981, #059669){% elif result.decision == "review" %}linear-gradient(90deg, #f59e0b, #d97706){% elif result.decision == "completed" %}linear-gradient(90deg, #06b6d4, #10b981){% else %}linear-gradient(90deg, #ef4444, #b91c1c){% endif %};
         }
 
         .result-icon {
-            font-size: 56px;
+            font-size: 52px;
             margin-bottom: 12px;
-        }
-
-        .risk-gauge-container {
-            margin: 20px auto 10px;
             display: inline-block;
         }
 
-        .risk-score {
-            font-size: clamp(42px, 8vw, 56px);
+        .result-header h1 {
+            font-size: clamp(26px, 4vw, 36px);
             font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        /* SVG Radial Meter */
+        .gauge-wrapper {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin: 20px auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gauge-svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: #16243d;
+            stroke-width: 14;
+        }
+
+        .gauge-progress {
+            fill: none;
+            stroke-width: 14;
+            stroke-linecap: round;
+            stroke-dasharray: 440;
+            transition: stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .gauge-inner-content {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gauge-number {
+            font-size: 38px;
+            font-weight: 900;
             line-height: 1;
-            margin: 10px 0 5px;
+            font-family: var(--font-mono);
+            letter-spacing: -1px;
         }
 
-        .risk-score-label {
-            color: #94a3b8;
-            font-size: 13px;
+        .gauge-label {
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
-            font-weight: 600;
+            letter-spacing: 1.2px;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-top: 6px;
         }
 
+        /* Status Pills */
         .status-pill {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 24px;
+            padding: 8px 22px;
             border-radius: 30px;
             font-weight: 700;
-            font-size: 14px;
-            margin: 15px 0 20px;
-            letter-spacing: 0.5px;
+            font-size: 13.5px;
+            margin: 16px 0 24px;
+            letter-spacing: 0.4px;
         }
 
         .safe-pill {
-            background: #123d2b;
+            background: #112822;
             color: #4ade80;
             border: 1px solid #166534;
         }
 
         .suspicious-pill {
-            background: #493617;
+            background: #2b2313;
             color: #fbbf24;
             border: 1px solid #854d0e;
         }
 
         .danger-pill {
-            background: #481d25;
+            background: #2b1419;
             color: #fb7185;
             border: 1px solid #9f1239;
         }
 
         /* Recommendation Box */
         .recommendation-card {
-            margin: 25px 0;
+            margin: 24px 0;
             padding: 22px;
             border-radius: 14px;
             text-align: left;
             border-left: 5px solid;
-            background: #1a2233;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
         }
 
         .rec-safe {
-            border-left-color: #22c55e;
-            background: #112822;
+            border-left: 5px solid #10b981;
+            background: #0f1d20;
         }
 
         .rec-suspicious {
-            border-left-color: #f59e0b;
-            background: #2b2313;
+            border-left: 5px solid #f59e0b;
+            background: #211c15;
         }
 
         .rec-danger {
-            border-left-color: #ef4444;
-            background: #2b1419;
+            border-left: 5px solid #ef4444;
+            background: #201317;
         }
 
         .rec-header {
@@ -111,52 +184,40 @@
         }
 
         .rec-title {
-            font-size: 16px;
-            font-weight: 700;
+            font-size: 15px;
+            font-weight: 800;
             color: #f8fafc;
         }
 
         .rec-badge {
             font-size: 11px;
             font-weight: 800;
-            padding: 4px 10px;
+            padding: 3px 10px;
             border-radius: 6px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.6px;
         }
 
-        .badge-safe {
-            background: #15803d;
-            color: #dcfce7;
-        }
-
-        .badge-suspicious {
-            background: #b45309;
-            color: #fef3c7;
-        }
-
-        .badge-danger {
-            background: #b91c1c;
-            color: #fee2e2;
-        }
+        .badge-safe { background: #15803d; color: #dcfce7; }
+        .badge-suspicious { background: #b45309; color: #fef3c7; }
+        .badge-danger { background: #b91c1c; color: #fee2e2; }
 
         .rec-guidance {
             color: #cbd5e1;
-            font-size: 14px;
+            font-size: 13.5px;
             line-height: 1.55;
-            margin-top: 6px;
         }
 
-        /* Distinction Disclaimer */
+        /* Transparency Notice */
         .distinction-notice {
-            background: #0f172a;
-            border: 1px solid #1e293b;
+            background: #0a1120;
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 16px 20px;
-            margin: 25px 0;
+            margin: 24px 0;
             text-align: left;
-            font-size: 13px;
-            color: #94a3b8;
+            font-size: 12.5px;
+            color: var(--text-muted);
             line-height: 1.6;
         }
 
@@ -167,9 +228,9 @@
         /* Explainable Indicators Grid */
         .section-subheading {
             text-align: left;
-            font-size: 17px;
-            font-weight: 700;
-            margin: 30px 0 15px;
+            font-size: 16px;
+            font-weight: 800;
+            margin: 30px 0 16px;
             color: #e2e8f0;
             display: flex;
             align-items: center;
@@ -185,8 +246,8 @@
         }
 
         .indicator-card {
-            background: #1c2436;
-            border: 1px solid #2e3a52;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 16px 18px;
             display: flex;
@@ -196,23 +257,23 @@
         }
 
         .indicator-card:hover {
-            border-color: #4b5e82;
+            border-color: var(--border-light);
             transform: translateY(-1px);
         }
 
         .indicator-card.level-critical {
             border-left: 4px solid #ef4444;
-            background: #20171d;
+            background: #1b1216;
         }
 
         .indicator-card.level-warning {
             border-left: 4px solid #f59e0b;
-            background: #221c17;
+            background: #1c1813;
         }
 
         .indicator-card.level-positive {
-            border-left: 4px solid #22c55e;
-            background: #152220;
+            border-left: 4px solid #10b981;
+            background: #101c1a;
         }
 
         .indicator-icon {
@@ -240,7 +301,7 @@
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            color: #94a3b8;
+            color: var(--text-dim);
         }
 
         .indicator-metric-pill {
@@ -248,9 +309,10 @@
             font-weight: 700;
             padding: 2px 8px;
             border-radius: 4px;
-            background: #0f172a;
+            background: #080d18;
             color: #e2e8f0;
-            border: 1px solid #334155;
+            border: 1px solid var(--border);
+            font-family: var(--font-mono);
         }
 
         .indicator-title {
@@ -266,26 +328,27 @@
             line-height: 1.5;
         }
 
-        /* Transaction Summary Box */
+        /* Transaction Attributes Summary Table */
         .result-details {
-            background: #1a2233;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 25px 0;
+            background: var(--bg-surface);
+            padding: 20px 22px;
+            border-radius: 14px;
+            margin: 24px 0;
             text-align: left;
-            border: 1px solid #2e384d;
+            border: 1px solid var(--border);
         }
 
         .detail-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             gap: 15px;
             margin: 10px 0;
-            font-size: 14px;
+            font-size: 13.5px;
         }
 
         .detail-row span {
-            color: #94a3b8;
+            color: var(--text-muted);
         }
 
         .detail-row strong {
@@ -293,339 +356,342 @@
             word-break: break-all;
         }
 
-        /* Buttons */
-        .btn-primary, .btn-secondary {
-            display: inline-block;
-            padding: 13px 28px;
-            border-radius: 9px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 14px;
-            margin: 8px 6px;
-            border: none;
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .btn-primary {
-            background: linear-gradient(90deg, #6366f1, #4f46e5);
-            color: white;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-        }
-
-        .btn-secondary {
-            background: #202737;
-            color: #e2e8f0;
-            border: 1px solid #334155;
-        }
-
-        .btn-secondary:hover {
-            background: #273449;
-            color: #fff;
-            transform: translateY(-2px);
-        }
-
+        /* Action Controls */
         .action-container {
             margin-top: 30px;
         }
 
         .transaction-id-tag {
             font-size: 12px;
-            color: #64748b;
+            color: var(--text-dim);
             word-break: break-all;
             margin-top: 25px;
             padding-top: 15px;
-            border-top: 1px solid #1e293b;
-        }
-
-        @media (max-width: 580px) {
-            .result-wrapper {
-                padding: 24px 16px;
-                margin: 25px auto;
-            }
-
-            .btn-primary, .btn-secondary {
-                width: 100%;
-                margin: 6px 0;
-                box-sizing: border-box;
-            }
-
-            .rec-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
+            border-top: 1px solid var(--border);
+            font-family: var(--font-mono);
         }
     </style>
 </head>
 
 <body>
 
-    <div class="result-wrapper">
+    <!-- Header Navbar -->
+    <header class="navbar">
+        <a href="/" class="logo">
+            <span class="logo-shield">🛡️</span>
+            <span>ScamShield Pay</span>
+        </a>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/#analyzer">Risk Analyzer</a>
+            <a href="{{ url_for('transactions_history') }}">Transactions</a>
+            <a href="{{ url_for('dashboard') }}" class="nav-admin-link">📊 Admin Dashboard</a>
+        </nav>
+    </header>
 
-        {% if result.decision == "approved" %}
+    <div class="result-page-container">
+        <div class="result-wrapper">
 
-            <div class="result-icon">✅</div>
-            <h1>Transaction Cleared</h1>
-            <div class="status-pill safe-pill">
-                <span>🛡️ Safe Transaction</span>
-                <small style="opacity: 0.85;">(&lt; 35% Risk)</small>
-            </div>
+            {% if result.decision == "approved" %}
 
-            <div class="risk-gauge-container">
-                <div class="risk-score" style="color: #4ade80;">
-                    {{ "%.2f"|format(result.risk_score) }}%
+                <div class="result-icon">✅</div>
+                <div class="result-header">
+                    <h1>Transaction Cleared</h1>
                 </div>
-                <div class="risk-score-label">AI Fraud Risk Score</div>
-            </div>
 
-            <!-- Recommended Action -->
-            {% if result.recommended_action %}
-            <div class="recommendation-card rec-safe">
-                <div class="rec-header">
-                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
-                    <span class="rec-badge badge-safe">{{ result.recommended_action.badge }}</span>
+                <div class="status-pill safe-pill">
+                    <span>🛡️ Safe Transaction</span>
+                    <small style="opacity: 0.85;">(&lt; 35% Risk)</small>
                 </div>
-                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
-            </div>
-            {% endif %}
 
-        {% elif result.decision == "review" %}
-
-            <div class="result-icon">⚠️</div>
-            <h1>Transaction Under Review</h1>
-            <div class="status-pill suspicious-pill">
-                <span>⚠️ Suspicious Activity Detected</span>
-                <small style="opacity: 0.85;">(35% - 70% Risk)</small>
-            </div>
-
-            <div class="risk-gauge-container">
-                <div class="risk-score" style="color: #fbbf24;">
-                    {{ "%.2f"|format(result.risk_score) }}%
-                </div>
-                <div class="risk-score-label">AI Fraud Risk Score</div>
-            </div>
-
-            <!-- Recommended Action -->
-            {% if result.recommended_action %}
-            <div class="recommendation-card rec-suspicious">
-                <div class="rec-header">
-                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
-                    <span class="rec-badge badge-suspicious">{{ result.recommended_action.badge }}</span>
-                </div>
-                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
-            </div>
-            {% endif %}
-
-        {% elif result.decision == "blocked" %}
-
-            <div class="result-icon">🚨</div>
-            <h1>Payment Blocked</h1>
-            <div class="status-pill danger-pill">
-                <span>🚨 High Risk Scam Profile</span>
-                <small style="opacity: 0.85;">(≥ 70% Risk)</small>
-            </div>
-
-            <div class="risk-gauge-container">
-                <div class="risk-score" style="color: #fb7185;">
-                    {{ "%.2f"|format(result.risk_score) }}%
-                </div>
-                <div class="risk-score-label">AI Fraud Risk Score</div>
-            </div>
-
-            <!-- Recommended Action -->
-            {% if result.recommended_action %}
-            <div class="recommendation-card rec-danger">
-                <div class="rec-header">
-                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
-                    <span class="rec-badge badge-danger">{{ result.recommended_action.badge }}</span>
-                </div>
-                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
-            </div>
-            {% endif %}
-
-        {% elif result.decision == "completed" %}
-
-            <div class="result-icon">🎉</div>
-            <h1>Payment Successful</h1>
-            <div class="status-pill safe-pill">
-                <span>✅ Checkout Completed</span>
-            </div>
-
-            <p style="color: #cbd5e1; margin: 15px 0 25px; font-size: 15px;">
-                Your payment has been successfully authorized and securely captured via PayPal Sandbox.
-            </p>
-
-            <div class="result-details">
-                {% if result.amount %}
-                <div class="detail-row">
-                    <span>Amount Paid</span>
-                    <strong style="color: #4ade80;">${{ "%.2f"|format(result.amount) }} USD</strong>
-                </div>
-                {% endif %}
-                <div class="detail-row">
-                    <span>Payment Gateway</span>
-                    <strong>PayPal Sandbox REST API</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Payment Status</span>
-                    <strong style="color: #4ade80;">COMPLETED</strong>
-                </div>
-                {% if result.capture_id %}
-                <div class="detail-row">
-                    <span>PayPal Capture ID</span>
-                    <strong>{{ result.capture_id }}</strong>
-                </div>
-                {% endif %}
-            </div>
-
-            <div class="action-container">
-                <a href="{{ url_for('index') }}" class="btn-primary">
-                    Start New Transaction
-                </a>
-            </div>
-
-        {% else %}
-
-            <div class="result-icon">ℹ️</div>
-            <h1>{{ result.status or "Notice" }}</h1>
-            <p style="color: #cbd5e1; margin: 15px 0 25px;">{{ result.message or "Unable to process the requested assessment." }}</p>
-
-            <div class="action-container">
-                <a href="{{ url_for('index') }}" class="btn-secondary">
-                    Back to Home
-                </a>
-            </div>
-
-        {% endif %}
-
-
-        <!-- Contextual Risk Factors & Explainability (Shown for Analyzed Transactions) -->
-        {% if result.risk_indicators %}
-
-            <!-- Explicit Distinction Notice -->
-            <div class="distinction-notice">
-                <strong>💡 Transparency & Explainability Note:</strong>
-                The <strong>AI Fraud Risk Score</strong> above is calculated by the <em>Random Forest Classifier</em> evaluating interactions across all 5 features. The <strong>Contextual Risk Indicators</strong> below represent observable transaction attributes evaluated against standard operational security rules to provide human-readable context.
-            </div>
-
-            <div class="section-subheading">
-                <span>🔍 Observable Risk Indicators (Rule-Based Analysis)</span>
-            </div>
-
-            <div class="indicators-grid">
-                {% for ind in result.risk_indicators %}
-                <div class="indicator-card level-{{ ind.level }}">
-                    <div class="indicator-icon">{{ ind.icon }}</div>
-                    <div class="indicator-content">
-                        <div class="indicator-top">
-                            <span class="indicator-category">{{ ind.category }}</span>
-                            <span class="indicator-metric-pill">{{ ind.metric }}</span>
-                        </div>
-                        <div class="indicator-title">{{ ind.title }}</div>
-                        <div class="indicator-desc">{{ ind.description }}</div>
+                <!-- Visual Radial Risk Gauge -->
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 160 160">
+                        <circle class="gauge-bg" cx="80" cy="80" r="70" />
+                        <circle class="gauge-progress" cx="80" cy="80" r="70"
+                                stroke="#10b981"
+                                style="stroke-dashoffset: {{ 440 - (440 * (result.risk_score / 100)) }}; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.5));" />
+                    </svg>
+                    <div class="gauge-inner-content">
+                        <span class="gauge-number" style="color: #4ade80;">{{ "%.2f"|format(result.risk_score) }}%</span>
+                        <span class="gauge-label">Fraud Probability</span>
                     </div>
                 </div>
-                {% endfor %}
-            </div>
 
-            <!-- Transaction Attributes Summary Table -->
-            <div class="result-details">
-                <div class="detail-row">
-                    <span>Submitted Amount</span>
-                    <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
+                <!-- Operational Recommendation -->
+                {% if result.recommended_action %}
+                <div class="recommendation-card rec-safe">
+                    <div class="rec-header">
+                        <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                        <span class="rec-badge badge-safe">{{ result.recommended_action.badge }}</span>
+                    </div>
+                    <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
                 </div>
-                <div class="detail-row">
-                    <span>Machine Learning Model</span>
-                    <strong>Random Forest (200 Trees, Stratified)</strong>
+                {% endif %}
+
+            {% elif result.decision == "review" %}
+
+                <div class="result-icon">⚠️</div>
+                <div class="result-header">
+                    <h1>Transaction Under Review</h1>
                 </div>
-                <div class="detail-row">
-                    <span>Calculated Probability</span>
-                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
+
+                <div class="status-pill suspicious-pill">
+                    <span>⚠️ Suspicious Activity Detected</span>
+                    <small style="opacity: 0.85;">(35% - 70% Risk)</small>
                 </div>
-                <div class="detail-row">
-                    <span>Gating Decision</span>
-                    {% if result.decision == "approved" %}
-                        <strong style="color: #4ade80;">APPROVED FOR CHECKOUT</strong>
-                    {% elif result.decision == "review" %}
-                        <strong style="color: #fbbf24;">HELD (PAYMENT DISALLOWED)</strong>
-                    {% else %}
-                        <strong style="color: #fb7185;">BLOCKED (PAYMENT PROHIBITED)</strong>
+
+                <!-- Visual Radial Risk Gauge -->
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 160 160">
+                        <circle class="gauge-bg" cx="80" cy="80" r="70" />
+                        <circle class="gauge-progress" cx="80" cy="80" r="70"
+                                stroke="#f59e0b"
+                                style="stroke-dashoffset: {{ 440 - (440 * (result.risk_score / 100)) }}; filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.5));" />
+                    </svg>
+                    <div class="gauge-inner-content">
+                        <span class="gauge-number" style="color: #fbbf24;">{{ "%.2f"|format(result.risk_score) }}%</span>
+                        <span class="gauge-label">Fraud Probability</span>
+                    </div>
+                </div>
+
+                <!-- Operational Recommendation -->
+                {% if result.recommended_action %}
+                <div class="recommendation-card rec-suspicious">
+                    <div class="rec-header">
+                        <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                        <span class="rec-badge badge-suspicious">{{ result.recommended_action.badge }}</span>
+                    </div>
+                    <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
+                </div>
+                {% endif %}
+
+            {% elif result.decision == "blocked" %}
+
+                <div class="result-icon">🚨</div>
+                <div class="result-header">
+                    <h1>Payment Blocked</h1>
+                </div>
+
+                <div class="status-pill danger-pill">
+                    <span>🚨 High Risk Scam Profile</span>
+                    <small style="opacity: 0.85;">(&ge; 70% Risk)</small>
+                </div>
+
+                <!-- Visual Radial Risk Gauge -->
+                <div class="gauge-wrapper">
+                    <svg class="gauge-svg" viewBox="0 0 160 160">
+                        <circle class="gauge-bg" cx="80" cy="80" r="70" />
+                        <circle class="gauge-progress" cx="80" cy="80" r="70"
+                                stroke="#ef4444"
+                                style="stroke-dashoffset: {{ 440 - (440 * (result.risk_score / 100)) }}; filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.5));" />
+                    </svg>
+                    <div class="gauge-inner-content">
+                        <span class="gauge-number" style="color: #fb7185;">{{ "%.2f"|format(result.risk_score) }}%</span>
+                        <span class="gauge-label">Fraud Probability</span>
+                    </div>
+                </div>
+
+                <!-- Operational Recommendation -->
+                {% if result.recommended_action %}
+                <div class="recommendation-card rec-danger">
+                    <div class="rec-header">
+                        <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                        <span class="rec-badge badge-danger">{{ result.recommended_action.badge }}</span>
+                    </div>
+                    <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
+                </div>
+                {% endif %}
+
+            {% elif result.decision == "completed" %}
+
+                <div class="result-icon">🎉</div>
+                <div class="result-header">
+                    <h1>Payment Successful</h1>
+                </div>
+
+                <div class="status-pill safe-pill">
+                    <span>✅ Checkout Completed &amp; Verified</span>
+                </div>
+
+                <p style="color: #cbd5e1; margin: 15px 0 25px; font-size: 14.5px; line-height: 1.6;">
+                    Your payment has been successfully authorized and securely captured via PayPal Sandbox REST API. An official digital receipt is recorded in the ScamShield persistent ledger.
+                </p>
+
+                <div class="result-details">
+                    {% if result.amount %}
+                    <div class="detail-row">
+                        <span>Amount Transferred</span>
+                        <strong style="color: #4ade80; font-size: 16px;">${{ "%.2f"|format(result.amount) }} USD</strong>
+                    </div>
+                    {% endif %}
+                    <div class="detail-row">
+                        <span>Payment Gateway</span>
+                        <strong>PayPal Sandbox Orders v2</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span>Lifecycle Status</span>
+                        <strong style="color: #4ade80;">COMPLETED</strong>
+                    </div>
+                    {% if result.capture_id %}
+                    <div class="detail-row">
+                        <span>PayPal Capture ID</span>
+                        <strong style="font-family: var(--font-mono); color: #a5b4fc;">{{ result.capture_id }}</strong>
+                    </div>
                     {% endif %}
                 </div>
-            </div>
 
-            <!-- Action Controls (Strict Payment Gating & Step-Up Security) -->
-            <div class="action-container">
-                {% if result.decision == "approved" %}
-                    <a href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
-                       class="btn-primary">
-                        Continue to PayPal Sandbox Checkout →
+                <div class="action-container">
+                    <a href="{{ url_for('index') }}" class="btn-primary">
+                        <span>➕</span> Start New Transaction Analysis
                     </a>
-                    <br>
+                    <a href="{{ url_for('transactions_history') }}" class="btn-secondary" style="margin-left: 8px;">
+                        <span>📜</span> View in Audit Ledger
+                    </a>
+                </div>
+
+            {% else %}
+
+                <div class="result-icon">ℹ️</div>
+                <div class="result-header">
+                    <h1>{{ result.status or "Notice" }}</h1>
+                </div>
+                <p style="color: #cbd5e1; margin: 15px 0 25px;">{{ result.message or "Unable to process the requested assessment." }}</p>
+
+                <div class="action-container">
                     <a href="{{ url_for('index') }}" class="btn-secondary">
-                        Back to Home
+                        ← Back to Risk Analyzer
                     </a>
-                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
-                        📊 Admin Dashboard
-                    </a>
-                {% elif result.decision == "review" %}
-                    <!-- Step-Up Verification Challenge Box -->
-                    <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 22px; margin-bottom: 22px; text-align: left;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                            <span style="font-size: 24px;">🛡️</span>
-                            <div>
-                                <strong style="color: #fbbf24; font-size: 16px; display: block;">Step-Up Security Verification Required</strong>
-                                <span style="font-size: 12px; color: #94a3b8;">Two-Factor Authentication (MFA) &amp; Operational Policy Re-evaluation</span>
+                </div>
+
+            {% endif %}
+
+
+            <!-- Contextual Risk Factors & Explainability (Shown for Analyzed Transactions) -->
+            {% if result.risk_indicators %}
+
+                <!-- Explicit Distinction Notice -->
+                <div class="distinction-notice">
+                    <strong>💡 Model vs. Heuristics Explainability Note:</strong>
+                    The <strong>Fraud Risk Score</strong> above is generated by the <em>Random Forest Classifier</em> evaluating interactions across all 5 features. The <strong>Observable Risk Indicators</strong> below represent contextual rule-based heuristics to provide human-readable operational visibility without falsely claiming direct causal activation.
+                </div>
+
+                <div class="section-subheading">
+                    <span>🔍 Observable Risk Indicators (Rule-Based Analysis)</span>
+                </div>
+
+                <div class="indicators-grid">
+                    {% for ind in result.risk_indicators %}
+                    <div class="indicator-card level-{{ ind.level }}">
+                        <div class="indicator-icon">{{ ind.icon }}</div>
+                        <div class="indicator-content">
+                            <div class="indicator-top">
+                                <span class="indicator-category">{{ ind.category }}</span>
+                                <span class="indicator-metric-pill">{{ ind.metric }}</span>
                             </div>
+                            <div class="indicator-title">{{ ind.title }}</div>
+                            <div class="indicator-desc">{{ ind.description }}</div>
                         </div>
-                        <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0 0 16px;">
-                            This transaction was flagged with moderate fraud indicators (35%–70% risk tier). To protect your funds against unauthorized checkout, checkout is held pending secondary identity verification. You may complete the verification challenge below to re-evaluate payment eligibility.
-                        </p>
-                        <a href="{{ url_for('verify_transaction', transaction_id=result.transaction_id) }}"
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Transaction Attributes Summary Table -->
+                <div class="result-details">
+                    <div class="detail-row">
+                        <span>Submitted Amount</span>
+                        <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span>Machine Learning Model</span>
+                        <strong>Random Forest (200 Trees, Stratified)</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span>Calculated Probability</span>
+                        <strong style="font-family: var(--font-mono);">{{ "%.2f"|format(result.risk_score) }}%</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span>Gating Clearance</span>
+                        {% if result.decision == "approved" %}
+                            <strong style="color: #4ade80;">APPROVED FOR SANDBOX CHECKOUT</strong>
+                        {% elif result.decision == "review" %}
+                            <strong style="color: #fbbf24;">HELD PENDING STEP-UP MFA CHALLENGE</strong>
+                        {% else %}
+                            <strong style="color: #fb7185;">STRICTLY PROHIBITED FROM CHECKOUT</strong>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Action Controls (Strict Payment Gating & Step-Up Security) -->
+                <div class="action-container">
+                    {% if result.decision == "approved" %}
+                        <a href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
                            class="btn-primary"
-                           style="background: linear-gradient(90deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.4); display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px;">
-                            <span>🔐</span> Proceed to Step-Up Security Verification →
+                           style="padding: 15px 32px; font-size: 15px;">
+                            Continue to PayPal Sandbox Checkout →
                         </a>
-                    </div>
-                    <a href="{{ url_for('index') }}" class="btn-secondary">
-                        ← Try Another Transaction
-                    </a>
-                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
-                        📊 Admin Dashboard
-                    </a>
-                {% else %}
-                    <!-- High Risk: Strictly Blocked -->
-                    <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 14px; padding: 20px; margin-bottom: 22px; text-align: left;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                            <span style="font-size: 24px;">🛑</span>
-                            <strong style="color: #f87171; font-size: 16px;">Payment Processing Prohibited</strong>
+                        <div style="margin-top: 14px;">
+                            <a href="{{ url_for('index') }}" class="btn-secondary">
+                                ← New Scan
+                            </a>
+                            <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                                📊 Admin Dashboard
+                            </a>
                         </div>
-                        <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0;">
-                            This transaction has been permanently blocked due to high-risk fraud indicators (≥ 70%). For account security and anti-fraud protection, secondary verification is not permitted and payment order creation is strictly denied.
-                        </p>
-                    </div>
-                    <a href="{{ url_for('index') }}" class="btn-secondary">
-                        ← Try Another Transaction
-                    </a>
-                    <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
-                        📊 Admin Dashboard
-                    </a>
-                {% endif %}
-            </div>
+                    {% elif result.decision == "review" %}
+                        <!-- Step-Up Verification Challenge Box -->
+                        <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 14px; padding: 22px; margin-bottom: 22px; text-align: left;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                                <span style="font-size: 24px;">🛡️</span>
+                                <div>
+                                    <strong style="color: #fbbf24; font-size: 16px; display: block;">Step-Up Security Verification Required</strong>
+                                    <span style="font-size: 12px; color: #94a3b8;">Two-Factor Authentication (MFA) &amp; Operational Policy Re-evaluation</span>
+                                </div>
+                            </div>
+                            <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0 0 16px;">
+                                This transaction triggered moderate risk indicators (35%–70% tier). To protect your funds against unauthorized checkout, checkout is held pending secondary identity verification. You may complete the verification challenge below to re-evaluate payment eligibility.
+                            </p>
+                            <a href="{{ url_for('verify_transaction', transaction_id=result.transaction_id) }}"
+                               class="btn-primary"
+                               style="background: linear-gradient(90deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.4); display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px;">
+                                <span>🔐</span> Proceed to Step-Up Security Verification →
+                            </a>
+                        </div>
+                        <a href="{{ url_for('index') }}" class="btn-secondary">
+                            ← Try Another Transaction
+                        </a>
+                        <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                            📊 Admin Dashboard
+                        </a>
+                    {% else %}
+                        <!-- High Risk: Strictly Blocked -->
+                        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 14px; padding: 20px; margin-bottom: 22px; text-align: left;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <span style="font-size: 24px;">🛑</span>
+                                <strong style="color: #f87171; font-size: 16px;">Payment Processing Prohibited</strong>
+                            </div>
+                            <p style="color: #cbd5e1; font-size: 13.5px; line-height: 1.55; margin: 0;">
+                                This transaction has been permanently blocked due to high-risk fraud indicators (&ge; 70%). For account security and anti-fraud protection, secondary verification is not permitted and payment order creation is strictly denied.
+                            </p>
+                        </div>
+                        <a href="{{ url_for('index') }}" class="btn-secondary">
+                            ← Try Another Transaction
+                        </a>
+                        <a href="{{ url_for('dashboard') }}" class="btn-secondary" style="margin-left: 8px;">
+                            📊 Admin Dashboard
+                        </a>
+                    {% endif %}
+                </div>
 
-        {% endif %}
+            {% endif %}
 
-        {% if result.transaction_id %}
-            <p class="transaction-id-tag">
-                Transaction Tracking ID: <code>{{ result.transaction_id }}</code>
-            </p>
-        {% endif %}
+            {% if result.transaction_id %}
+                <p class="transaction-id-tag">
+                    Transaction Tracking Identifier: <code>{{ result.transaction_id }}</code>
+                </p>
+            {% endif %}
 
+        </div>
     </div>
 
 </body>
