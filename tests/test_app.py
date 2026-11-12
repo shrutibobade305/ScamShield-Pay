@@ -464,3 +464,201 @@ def test_dashboard_seed_and_clear_demo(client):
     stats_res2 = client.get("/api/dashboard/stats")
     assert stats_res2.get_json()["metrics"]["total_transactions"] == 0
 
+
+# --------------------------------------------------
+# TRANSACTION HISTORY & DETAILS TESTS
+# --------------------------------------------------
+
+def test_transactions_history_page_loads(client):
+    """Test that /transactions and /history load successfully."""
+    res1 = client.get("/transactions")
+    assert res1.status_code == 200
+    assert b"Transaction History" in res1.data
+    assert b"All Records" in res1.data
+
+    res2 = client.get("/history")
+    assert res2.status_code == 200
+    assert b"Transaction History" in res2.data
+
+
+def test_transactions_history_empty_db(client):
+    """Test that transaction history handles empty database cleanly."""
+    res = client.get("/transactions")
+    assert res.status_code == 200
+    assert b"No transactions found" in res.data
+
+    # JSON response
+    res_json = client.get("/transactions?format=json")
+    assert res_json.status_code == 200
+    data = res_json.get_json()
+    assert data["status"] == "success"
+    assert data["total"] == 0
+    assert len(data["transactions"]) == 0
+
+
+def test_transactions_history_filtering_and_search(client):
+    """
+    Test filtering by Safe, Suspicious, High Risk, Payment Successful,
+    Payment Failed, Blocked, and search by transaction ID.
+    """
+    # 1. Safe + Completed transaction
+    res_safe = client.post("/predict", json={
+        "amount": 25.0,
+        "transaction_hour": 14,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    safe_id = res_safe.get_json()["transaction_id"]
+    with app.app_context():
+        t = Transaction.query.filter_by(transaction_id=safe_id).first()
+        t.payment_status = "COMPLETED"
+        t.paypal_capture_id = "TEST-CAP-111"
+        db.session.commit()
+
+    # 2. Suspicious + Under Review + Blocked Suspicious transaction
+    res_susp = client.post("/predict", json={
+        "amount": 10000.0,
+        "transaction_hour": 2,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 1
+    })
+    susp_id = res_susp.get_json()["transaction_id"]
+
+    # 3. High Risk + Blocked transaction
+    res_danger = client.post("/predict", json={
+        "amount": 50000.0,
+        "transaction_hour": 1,
+        "international": 1,
+        "new_device": 1,
+        "failed_attempts": 4
+    })
+    danger_id = res_danger.get_json()["transaction_id"]
+
+    # 4. Another transaction manually set to FAILED
+    res_failed = client.post("/predict", json={
+        "amount": 35.0,
+        "transaction_hour": 12,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    failed_id = res_failed.get_json()["transaction_id"]
+    with app.app_context():
+        tf = Transaction.query.filter_by(transaction_id=failed_id).first()
+        tf.payment_status = "FAILED"
+        db.session.commit()
+
+    # Test Filter: Safe
+    safe_query = client.get("/transactions?risk=Safe&format=json")
+    assert safe_query.status_code == 200
+    safe_data = safe_query.get_json()
+    assert safe_data["total"] == 2  # safe_id and failed_id both have low risk
+    assert any(t["transaction_id"] == safe_id for t in safe_data["transactions"])
+
+    # Test Filter: Suspicious
+    susp_query = client.get("/transactions?risk=Suspicious&format=json")
+    assert susp_query.status_code == 200
+    assert susp_query.get_json()["total"] == 1
+    assert susp_query.get_json()["transactions"][0]["transaction_id"] == susp_id
+
+    # Test Filter: High Risk
+    danger_query = client.get("/transactions?risk=High%20Risk&format=json")
+    assert danger_query.status_code == 200
+    assert danger_query.get_json()["total"] == 1
+    assert danger_query.get_json()["transactions"][0]["transaction_id"] == danger_id
+
+    # Test Filter: Payment Successful (COMPLETED)
+    comp_query = client.get("/transactions?status=COMPLETED&format=json")
+    assert comp_query.status_code == 200
+    assert comp_query.get_json()["total"] == 1
+    assert comp_query.get_json()["transactions"][0]["transaction_id"] == safe_id
+
+    # Test Filter: Payment Failed
+    fail_query = client.get("/transactions?status=FAILED&format=json")
+    assert fail_query.status_code == 200
+    assert fail_query.get_json()["total"] == 1
+    assert fail_query.get_json()["transactions"][0]["transaction_id"] == failed_id
+
+    # Test Filter: Blocked
+    block_query = client.get("/transactions?status=BLOCKED&format=json")
+    assert block_query.status_code == 200
+    # Suspicious (BLOCKED_SUSPICIOUS) + High Risk (BLOCKED_HIGH_RISK) are both blocked
+    assert block_query.get_json()["total"] == 2
+
+    # Test Search by Transaction ID
+    search_query = client.get(f"/transactions?search={safe_id[:10]}&format=json")
+    assert search_query.status_code == 200
+    assert search_query.get_json()["total"] == 1
+    assert search_query.get_json()["transactions"][0]["transaction_id"] == safe_id
+
+
+def test_transactions_history_pagination(client):
+    """Test pagination on transactions history."""
+    # Seed 5 transactions
+    for i in range(5):
+        client.post("/predict", json={
+            "amount": 10.0 + i,
+            "transaction_hour": 12,
+            "international": 0,
+            "new_device": 0,
+            "failed_attempts": 0
+        })
+
+    # Page 1, limit 2
+    p1 = client.get("/transactions?page=1&limit=2&format=json")
+    assert p1.status_code == 200
+    d1 = p1.get_json()
+    assert d1["total"] == 5
+    assert d1["page"] == 1
+    assert d1["per_page"] == 2
+    assert d1["total_pages"] == 3
+    assert len(d1["transactions"]) == 2
+    assert d1["has_prev"] is False
+    assert d1["has_next"] is True
+
+    # Page 2, limit 2
+    p2 = client.get("/transactions?page=2&limit=2&format=json")
+    assert p2.status_code == 200
+    d2 = p2.get_json()
+    assert d2["page"] == 2
+    assert len(d2["transactions"]) == 2
+    assert d2["has_prev"] is True
+    assert d2["has_next"] is True
+
+
+def test_transaction_detail_page_and_json(client):
+    """Test the standalone transaction details page and API."""
+    res = client.post("/predict", json={
+        "amount": 75.0,
+        "transaction_hour": 15,
+        "international": 0,
+        "new_device": 0,
+        "failed_attempts": 0
+    })
+    tx_id = res.get_json()["transaction_id"]
+
+    # Test HTML view
+    html_res = client.get(f"/transactions/{tx_id}")
+    assert html_res.status_code == 200
+    assert b"Transaction Inspection" in html_res.data
+    assert b"75.00" in html_res.data
+    assert b"Behavioral Input Features" in html_res.data
+    assert b"Explainable AI Risk Indicators" in html_res.data
+    assert b"Security Protocol" in html_res.data
+
+    # Test JSON view
+    json_res = client.get(f"/transactions/{tx_id}?format=json")
+    assert json_res.status_code == 200
+    data = json_res.get_json()
+    assert data["status"] == "success"
+    assert data["transaction"]["transaction_id"] == tx_id
+    assert len(data["explainability"]["indicators"]) == 5
+    assert "recommendation" in data["explainability"]
+
+    # Test invalid format ID (400) and nonexistent ID (404)
+    assert client.get("/transactions/invalid!id_").status_code == 400
+    assert client.get("/transactions/nonexistent_1234567890").status_code == 404
+
+

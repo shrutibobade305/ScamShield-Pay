@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import logging
+import math
 import os
 import re
 import secrets
@@ -1106,6 +1107,67 @@ def api_dashboard_charts():
         return jsonify({"error": "Database query error", "status": "error"}), 500
 
 
+def apply_transaction_filters(query, search="", risk="all", status="all", date_range="all"):
+    """
+    Applies validated filter criteria to a Transaction query:
+    - date_range: 'today' | '7d' | '30d' | 'all'
+    - risk: 'Safe' | 'Suspicious' | 'High Risk' | 'all'
+    - status: 'COMPLETED' (Payment Successful) | 'FAILED' (Payment Failed) | 'BLOCKED' (Blocked) | 'PENDING' | 'all'
+    - search: string matched against transaction_id, paypal_order_id, paypal_capture_id
+    """
+    query = _apply_date_filter(query, date_range)
+
+    # Risk classification filtering
+    if risk and risk.lower() != "all":
+        risk_map = {
+            "safe": "Safe",
+            "suspicious": "Suspicious",
+            "high risk": "High Risk",
+            "high_risk": "High Risk",
+            "highrisk": "High Risk"
+        }
+        canonical_risk = risk_map.get(risk.lower(), risk)
+        query = query.filter(Transaction.risk_classification == canonical_risk)
+
+    # Payment status filtering
+    if status and status.lower() != "all":
+        norm_status = status.lower().strip()
+        if norm_status in ("completed", "successful", "payment successful", "success"):
+            query = query.filter(Transaction.payment_status == "COMPLETED")
+        elif norm_status in ("failed", "payment failed", "failure"):
+            query = query.filter(Transaction.payment_status == "FAILED")
+        elif norm_status in ("blocked", "blocked_suspicious", "blocked_high_risk"):
+            query = query.filter(
+                or_(
+                    Transaction.payment_status.like("BLOCKED%"),
+                    Transaction.transaction_status == "BLOCKED"
+                )
+            )
+        elif norm_status in ("pending",):
+            query = query.filter(Transaction.payment_status == "PENDING")
+        elif norm_status in ("cancelled", "canceled"):
+            query = query.filter(Transaction.payment_status == "CANCELLED")
+        elif norm_status in ("safe", "suspicious", "high risk", "high_risk"):
+            risk_map = {"safe": "Safe", "suspicious": "Suspicious", "high risk": "High Risk", "high_risk": "High Risk"}
+            query = query.filter(Transaction.risk_classification == risk_map[norm_status])
+        else:
+            query = query.filter(Transaction.payment_status == status.upper())
+
+    # Search filter
+    if search:
+        clean_search = search.strip()
+        term = f"%{clean_search}%"
+        query = query.filter(
+            or_(
+                Transaction.transaction_id.ilike(term),
+                Transaction.paypal_order_id.ilike(term),
+                Transaction.paypal_capture_id.ilike(term)
+            )
+        )
+
+    return query
+
+
 @app.route("/api/dashboard/transactions")
 def api_dashboard_transactions():
     """
@@ -1131,45 +1193,13 @@ def api_dashboard_transactions():
             limit = 25
             offset = 0
 
-        query = Transaction.query
-
-        # Apply date filter
-        query = _apply_date_filter(query, date_range)
-
-        # Apply risk filter
-        if risk_filter and risk_filter.lower() != "all":
-            risk_map = {
-                "safe": "Safe",
-                "suspicious": "Suspicious",
-                "high risk": "High Risk",
-                "high_risk": "High Risk",
-                "highrisk": "High Risk"
-            }
-            canonical_risk = risk_map.get(risk_filter.lower(), risk_filter)
-            query = query.filter(Transaction.risk_classification == canonical_risk)
-
-        # Apply payment status filter
-        if status_filter and status_filter.lower() != "all":
-            if status_filter.upper() == "BLOCKED":
-                query = query.filter(
-                    or_(
-                        Transaction.payment_status.like("BLOCKED%"),
-                        Transaction.transaction_status == "BLOCKED"
-                    )
-                )
-            else:
-                query = query.filter(Transaction.payment_status == status_filter.upper())
-
-        # Apply search query
-        if search_query:
-            term = f"%{search_query}%"
-            query = query.filter(
-                or_(
-                    Transaction.transaction_id.ilike(term),
-                    Transaction.paypal_order_id.ilike(term),
-                    Transaction.paypal_capture_id.ilike(term)
-                )
-            )
+        query = apply_transaction_filters(
+            Transaction.query,
+            search=search_query,
+            risk=risk_filter,
+            status=status_filter,
+            date_range=date_range
+        )
 
         total_count = query.count()
         records = query.order_by(Transaction.created_at.desc()).offset(offset).limit(limit).all()
@@ -1397,7 +1427,261 @@ def api_dashboard_clear_demo():
 
 
 # --------------------------------------------------
-# 9. RUN APPLICATION
+# 9. TRANSACTION HISTORY & DETAILS ROUTES
+# --------------------------------------------------
+
+@app.route("/transactions")
+@app.route("/history")
+def transactions_history():
+    """
+    Renders the complete Transaction History page with:
+    - Real-time search by transaction ID, PayPal Order ID, or Capture ID
+    - Multi-factor filtering: Safe, Suspicious, High Risk, Payment Successful, Payment Failed, Blocked
+    - Date-range filtering (Today, Last 7 Days, Last 30 Days, All Time)
+    - Pagination with page size controls
+    - Summary metrics banner
+    - Responsive table with clear status badges
+    - Quick-inspect modal and full detail view links
+    Also returns JSON if requested (Accept: application/json or ?format=json).
+    """
+    search = request.args.get("search", "").strip()
+    risk = request.args.get("risk", "all").strip()
+    status = request.args.get("status", "all").strip()
+    date_range = request.args.get("date_range", "all").strip().lower()
+
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+
+    try:
+        per_page = min(max(int(request.args.get("limit", request.args.get("per_page", 15))), 1), 100)
+    except (ValueError, TypeError):
+        per_page = 15
+
+    try:
+        base_query = Transaction.query
+        filtered_query = apply_transaction_filters(
+            base_query,
+            search=search,
+            risk=risk,
+            status=status,
+            date_range=date_range
+        )
+
+        total_records = filtered_query.count()
+        total_pages = max(1, math.ceil(total_records / per_page))
+        if page > total_pages and total_records > 0:
+            page = total_pages
+
+        offset = (page - 1) * per_page
+        records = filtered_query.order_by(Transaction.created_at.desc()).offset(offset).limit(per_page).all()
+
+        transactions_list = [
+            {
+                "id": t.id,
+                "transaction_id": t.transaction_id,
+                "amount": t.amount,
+                "currency": t.currency,
+                "transaction_hour": t.transaction_hour,
+                "international": bool(t.international),
+                "new_device": bool(t.new_device),
+                "failed_attempts": t.failed_attempts,
+                "risk_score": round(t.risk_score, 2),
+                "risk_classification": t.risk_classification,
+                "transaction_status": t.transaction_status,
+                "payment_status": t.payment_status,
+                "paypal_order_id": t.paypal_order_id,
+                "paypal_capture_id": t.paypal_capture_id,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "created_at_formatted": t.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if t.created_at else ""
+            }
+            for t in records
+        ]
+
+        # Overall summary figures for filter badges
+        summary_counts = {
+            "total": Transaction.query.count(),
+            "safe": Transaction.query.filter_by(risk_classification="Safe").count(),
+            "suspicious": Transaction.query.filter_by(risk_classification="Suspicious").count(),
+            "high_risk": Transaction.query.filter_by(risk_classification="High Risk").count(),
+            "completed": Transaction.query.filter_by(payment_status="COMPLETED").count(),
+            "failed": Transaction.query.filter_by(payment_status="FAILED").count(),
+            "blocked": Transaction.query.filter(
+                or_(
+                    Transaction.payment_status.like("BLOCKED%"),
+                    Transaction.transaction_status == "BLOCKED"
+                )
+            ).count()
+        }
+
+        is_json = (
+            request.is_json
+            or request.args.get("format") == "json"
+            or request.headers.get("Accept") == "application/json"
+        )
+
+        if is_json:
+            return jsonify({
+                "status": "success",
+                "total": total_records,
+                "page": page,
+                "per_page": per_page,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages,
+                "transactions": transactions_list,
+                "summary": summary_counts,
+                "filters": {
+                    "search": search,
+                    "risk": risk,
+                    "status": status,
+                    "date_range": date_range
+                }
+            })
+
+        return render_template(
+            "transactions.html",
+            transactions=transactions_list,
+            total_records=total_records,
+            page=page,
+            per_page=per_page,
+            total_pages=total_pages,
+            has_prev=page > 1,
+            has_next=page < total_pages,
+            prev_page=page - 1,
+            next_page=page + 1,
+            search=search,
+            risk=risk,
+            status=status,
+            date_range=date_range,
+            summary=summary_counts
+        )
+
+    except SQLAlchemyError as err:
+        logger.exception("Database error loading transactions history: %s", err)
+        if request.is_json or request.args.get("format") == "json":
+            return jsonify({"error": "Database error", "status": "error"}), 500
+        return render_template("result.html", result={
+            "status": "Database Error",
+            "decision": "error",
+            "message": "A database error occurred while retrieving transaction history."
+        }), 500
+
+
+@app.route("/transactions/<transaction_id>")
+def transaction_detail(transaction_id):
+    """
+    Renders the dedicated Transaction Details page displaying:
+    - Behavioral input features (amount, hour, international, new device, failed attempts)
+    - ML probability verdict & risk classification
+    - 5 explainable risk indicators (contextual heuristics)
+    - Actionable security recommendation
+    - PayPal order and capture references
+    - Direct payment link if transaction is Safe and pending
+    Also returns JSON if requested.
+    """
+    clean_tx_id = (transaction_id or "").strip()
+    if not clean_tx_id or not is_valid_transaction_id(clean_tx_id):
+        if request.is_json or request.args.get("format") == "json":
+            return jsonify({"error": "Invalid transaction ID format.", "status": "error"}), 400
+        return render_template("result.html", result={
+            "status": "Invalid Transaction ID",
+            "decision": "error",
+            "message": "The transaction ID provided has an invalid format."
+        }), 400
+
+    try:
+        transaction = Transaction.query.filter_by(transaction_id=clean_tx_id).first()
+        if not transaction:
+            if request.is_json or request.args.get("format") == "json":
+                return jsonify({"error": "Transaction not found.", "status": "error"}), 404
+            return render_template("result.html", result={
+                "status": "Transaction Not Found",
+                "decision": "error",
+                "message": f"Transaction '{clean_tx_id}' was not found in the database."
+            }), 404
+
+        # Compute explainable risk indicators
+        indicators = analyze_risk_indicators(
+            amount=transaction.amount,
+            transaction_hour=transaction.transaction_hour,
+            international=transaction.international,
+            new_device=transaction.new_device,
+            failed_attempts=transaction.failed_attempts
+        )
+
+        decision = "approved" if transaction.risk_classification == "Safe" else (
+            "review" if transaction.risk_classification == "Suspicious" else "blocked"
+        )
+        recommendation = get_recommended_action(decision, transaction.risk_score)
+
+        is_payable = (
+            transaction.risk_classification == "Safe"
+            and transaction.transaction_status == "APPROVED"
+            and transaction.payment_status in ("PENDING", "NOT_ATTEMPTED")
+        )
+
+        tx_dict = {
+            "id": transaction.id,
+            "transaction_id": transaction.transaction_id,
+            "amount": transaction.amount,
+            "currency": transaction.currency,
+            "transaction_hour": transaction.transaction_hour,
+            "international": bool(transaction.international),
+            "new_device": bool(transaction.new_device),
+            "failed_attempts": transaction.failed_attempts,
+            "risk_score": round(transaction.risk_score, 2),
+            "risk_classification": transaction.risk_classification,
+            "transaction_status": transaction.transaction_status,
+            "payment_status": transaction.payment_status,
+            "paypal_order_id": transaction.paypal_order_id,
+            "paypal_capture_id": transaction.paypal_capture_id,
+            "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
+            "created_at_formatted": transaction.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if transaction.created_at else "",
+            "is_payable": is_payable,
+            "payment_url": url_for("payment", transaction_id=transaction.transaction_id) if is_payable else None
+        }
+
+        if request.is_json or request.args.get("format") == "json":
+            return jsonify({
+                "status": "success",
+                "transaction": tx_dict,
+                "explainability": {
+                    "indicators": indicators,
+                    "recommendation": recommendation,
+                    "model_name": "Random Forest Classifier (200 Trees, Stratified)",
+                    "feature_weights": {
+                        "amount": 0.457,
+                        "transaction_hour": 0.222,
+                        "failed_attempts": 0.178,
+                        "international": 0.081,
+                        "new_device": 0.062
+                    }
+                }
+            })
+
+        return render_template(
+            "transaction_detail.html",
+            transaction=tx_dict,
+            indicators=indicators,
+            recommendation=recommendation,
+            is_payable=is_payable
+        )
+
+    except SQLAlchemyError as err:
+        logger.exception("Database error loading transaction detail: %s", err)
+        if request.is_json or request.args.get("format") == "json":
+            return jsonify({"error": "Database error", "status": "error"}), 500
+        return render_template("result.html", result={
+            "status": "Database Error",
+            "decision": "error",
+            "message": "A database error occurred while retrieving transaction details."
+        }), 500
+
+
+# --------------------------------------------------
+# 10. RUN APPLICATION
 # --------------------------------------------------
 
 if __name__ == "__main__":
