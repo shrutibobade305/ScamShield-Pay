@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const button = this.querySelector("button[type='submit']");
             if (button) {
                 button.disabled = true;
-                button.textContent = "Analyzing Transaction...";
+                button.textContent = "Analyzing Transaction Risk...";
             }
         });
     }
@@ -64,3 +64,38 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 });
+
+// Global Scenario Pre-fill for Testing & Demonstration
+window.fillScenario = function (type) {
+    const amount = document.getElementById("amount");
+    const hour = document.getElementById("transaction_hour");
+    const intl = document.getElementById("international");
+    const device = document.getElementById("new_device");
+    const fails = document.getElementById("failed_attempts");
+
+    if (!amount || !hour || !intl || !device || !fails) {
+        return;
+    }
+
+    if (type === "safe") {
+        amount.value = "45.00";
+        hour.value = "14";
+        intl.value = "0";
+        device.value = "0";
+        fails.value = "0";
+    } else if (type === "suspicious") {
+        amount.value = "15000.00";
+        hour.value = "3";
+        intl.value = "1";
+        device.value = "1";
+        fails.value = "2";
+    } else if (type === "danger") {
+        amount.value = "35000.00";
+        hour.value = "2";
+        intl.value = "1";
+        device.value = "1";
+        fails.value = "5";
+    }
+
+    amount.dispatchEvent(new Event("input", { bubbles: true }));
+};

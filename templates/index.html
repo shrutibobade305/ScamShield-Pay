@@ -50,6 +50,22 @@
         <p>Enter transaction details to assess fraud risk before proceeding to payment.</p>
     </div>
 
+    <!-- Quick Test Scenarios Bar for Testing & Hackathon Evaluation -->
+    <div class="preset-box">
+        <span class="preset-label">⚡ Quick Test Scenarios (1-Click Fill):</span>
+        <div class="preset-buttons">
+            <button type="button" class="btn-preset btn-preset-safe" onclick="fillScenario('safe')">
+                🟢 Safe Demo ($45)
+            </button>
+            <button type="button" class="btn-preset btn-preset-suspicious" onclick="fillScenario('suspicious')">
+                🟡 Suspicious Demo ($15,000)
+            </button>
+            <button type="button" class="btn-preset btn-preset-danger" onclick="fillScenario('danger')">
+                🔴 High Risk Demo ($35,000)
+            </button>
+        </div>
+    </div>
+
     <form action="{{ url_for('predict') }}"
           method="POST"
           class="analyzer-form">
@@ -65,10 +81,11 @@
                 step="0.01"
                 placeholder="e.g. 150.00"
                 required>
+            <small class="field-hint">Amounts &gt;$20,000 carry elevated risk weights.</small>
         </div>
 
         <div class="form-group">
-            <label for="transaction_hour">Transaction Hour (0-23)</label>
+            <label for="transaction_hour">Transaction Hour (0-23 UTC)</label>
             <input
                 type="number"
                 id="transaction_hour"
@@ -77,26 +94,29 @@
                 max="23"
                 value="14"
                 required>
+            <small class="field-hint">Off-peak nighttime (23:00 - 04:00) flags temporal risk.</small>
         </div>
 
         <div class="form-group">
             <label for="international">International Transaction?</label>
             <select id="international" name="international">
-                <option value="0">No (Domestic)</option>
-                <option value="1">Yes (Cross-Border)</option>
+                <option value="0">No (Domestic Routing)</option>
+                <option value="1">Yes (Cross-Border Routing)</option>
             </select>
+            <small class="field-hint">Cross-border transfers have higher baseline exposure.</small>
         </div>
 
         <div class="form-group">
             <label for="new_device">New Device Detected?</label>
             <select id="new_device" name="new_device">
-                <option value="0">No (Recognized Device)</option>
-                <option value="1">Yes (Unrecognized Device)</option>
+                <option value="0">No (Recognized Device Profile)</option>
+                <option value="1">Yes (Unrecognized Hardware Fingerprint)</option>
             </select>
+            <small class="field-hint">Unrecognized devices indicate potential session hijacking.</small>
         </div>
 
         <div class="form-group full-width">
-            <label for="failed_attempts">Previous Failed Attempts</label>
+            <label for="failed_attempts">Previous Failed Attempts (0-20)</label>
             <input
                 type="number"
                 id="failed_attempts"
@@ -105,6 +125,7 @@
                 max="20"
                 value="0"
                 required>
+            <small class="field-hint">≥3 failed attempts trigger high velocity anomaly alerts.</small>
         </div>
 
         <button type="submit" class="btn-primary full-width">

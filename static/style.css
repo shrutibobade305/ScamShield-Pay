@@ -372,6 +372,85 @@ body {
     margin-top: 20px;
 }
 
+/* Presets toolbar */
+
+.preset-box {
+    max-width: 850px;
+    margin: 0 auto 20px;
+    padding: 14px 20px;
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.preset-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #94a3b8;
+}
+
+.preset-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn-preset {
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn-preset-safe {
+    background: #112822;
+    color: #4ade80;
+    border-color: #166534;
+}
+
+.btn-preset-safe:hover {
+    background: #14382e;
+    transform: translateY(-1px);
+}
+
+.btn-preset-suspicious {
+    background: #2b2313;
+    color: #fbbf24;
+    border-color: #854d0e;
+}
+
+.btn-preset-suspicious:hover {
+    background: #382c16;
+    transform: translateY(-1px);
+}
+
+.btn-preset-danger {
+    background: #2b1419;
+    color: #fb7185;
+    border-color: #9f1239;
+}
+
+.btn-preset-danger:hover {
+    background: #3b1820;
+    transform: translateY(-1px);
+}
+
+.field-hint {
+    color: #64748b;
+    font-size: 11px;
+    margin-top: 3px;
+    display: block;
+}
+
 /* Footer */
 
 footer {

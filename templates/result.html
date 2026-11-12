@@ -3,73 +3,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transaction Analysis | ScamShield Pay</title>
+    <title>Transaction Risk Analysis | ScamShield Pay</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
     <style>
         .result-wrapper {
-            max-width: 650px;
+            max-width: 760px;
             width: calc(100% - 32px);
-            margin: 50px auto;
-            padding: 35px 25px;
-            border-radius: 18px;
+            margin: 45px auto;
+            padding: 35px 28px;
+            border-radius: 20px;
             background: #151a26;
             color: #fff;
             text-align: center;
             box-sizing: border-box;
             border: 1px solid #273449;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
         }
 
         .result-icon {
-            font-size: 55px;
-            margin-bottom: 15px;
+            font-size: 56px;
+            margin-bottom: 12px;
+        }
+
+        .risk-gauge-container {
+            margin: 20px auto 10px;
+            display: inline-block;
         }
 
         .risk-score {
-            font-size: clamp(38px, 8vw, 52px);
+            font-size: clamp(42px, 8vw, 56px);
             font-weight: 800;
-            margin: 15px 0 5px;
+            line-height: 1;
+            margin: 10px 0 5px;
         }
 
         .risk-score-label {
             color: #94a3b8;
-            font-size: 14px;
+            font-size: 13px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 20px;
+            letter-spacing: 1.5px;
+            font-weight: 600;
         }
 
-        .status {
-            display: inline-block;
-            padding: 9px 22px;
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 24px;
             border-radius: 30px;
             font-weight: 700;
             font-size: 14px;
-            margin-bottom: 20px;
+            margin: 15px 0 20px;
             letter-spacing: 0.5px;
         }
 
-        .safe {
+        .safe-pill {
             background: #123d2b;
             color: #4ade80;
             border: 1px solid #166534;
         }
 
-        .suspicious {
+        .suspicious-pill {
             background: #493617;
             color: #fbbf24;
             border: 1px solid #854d0e;
         }
 
-        .danger {
+        .danger-pill {
             background: #481d25;
             color: #fb7185;
             border: 1px solid #9f1239;
         }
 
+        /* Recommendation Box */
+        .recommendation-card {
+            margin: 25px 0;
+            padding: 22px;
+            border-radius: 14px;
+            text-align: left;
+            border-left: 5px solid;
+            background: #1a2233;
+        }
+
+        .rec-safe {
+            border-left-color: #22c55e;
+            background: #112822;
+        }
+
+        .rec-suspicious {
+            border-left-color: #f59e0b;
+            background: #2b2313;
+        }
+
+        .rec-danger {
+            border-left-color: #ef4444;
+            background: #2b1419;
+        }
+
+        .rec-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .rec-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .rec-badge {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .badge-safe {
+            background: #15803d;
+            color: #dcfce7;
+        }
+
+        .badge-suspicious {
+            background: #b45309;
+            color: #fef3c7;
+        }
+
+        .badge-danger {
+            background: #b91c1c;
+            color: #fee2e2;
+        }
+
+        .rec-guidance {
+            color: #cbd5e1;
+            font-size: 14px;
+            line-height: 1.55;
+            margin-top: 6px;
+        }
+
+        /* Distinction Disclaimer */
+        .distinction-notice {
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin: 25px 0;
+            text-align: left;
+            font-size: 13px;
+            color: #94a3b8;
+            line-height: 1.6;
+        }
+
+        .distinction-notice strong {
+            color: #e2e8f0;
+        }
+
+        /* Explainable Indicators Grid */
+        .section-subheading {
+            text-align: left;
+            font-size: 17px;
+            font-weight: 700;
+            margin: 30px 0 15px;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .indicators-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        .indicator-card {
+            background: #1c2436;
+            border: 1px solid #2e3a52;
+            border-radius: 12px;
+            padding: 16px 18px;
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .indicator-card:hover {
+            border-color: #4b5e82;
+            transform: translateY(-1px);
+        }
+
+        .indicator-card.level-critical {
+            border-left: 4px solid #ef4444;
+            background: #20171d;
+        }
+
+        .indicator-card.level-warning {
+            border-left: 4px solid #f59e0b;
+            background: #221c17;
+        }
+
+        .indicator-card.level-positive {
+            border-left: 4px solid #22c55e;
+            background: #152220;
+        }
+
+        .indicator-icon {
+            font-size: 26px;
+            line-height: 1;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .indicator-content {
+            flex-grow: 1;
+        }
+
+        .indicator-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .indicator-category {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #94a3b8;
+        }
+
+        .indicator-metric-pill {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+        }
+
+        .indicator-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #f8fafc;
+            margin-bottom: 4px;
+        }
+
+        .indicator-desc {
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        /* Transaction Summary Box */
         .result-details {
-            background: #202737;
+            background: #1a2233;
             padding: 20px;
             border-radius: 12px;
             margin: 25px 0;
@@ -81,7 +280,7 @@
             display: flex;
             justify-content: space-between;
             gap: 15px;
-            margin: 12px 0;
+            margin: 10px 0;
             font-size: 14px;
         }
 
@@ -94,9 +293,10 @@
             word-break: break-all;
         }
 
+        /* Buttons */
         .btn-primary, .btn-secondary {
             display: inline-block;
-            padding: 13px 26px;
+            padding: 13px 28px;
             border-radius: 9px;
             text-decoration: none;
             font-weight: 700;
@@ -130,27 +330,22 @@
             transform: translateY(-2px);
         }
 
-        .message {
-            color: #aab3c5;
-            line-height: 1.6;
-            margin: 15px 0 25px;
-            font-size: 15px;
+        .action-container {
+            margin-top: 30px;
         }
 
-        .transaction-id {
+        .transaction-id-tag {
             font-size: 12px;
             color: #64748b;
             word-break: break-all;
-            margin-top: 20px;
-        }
-
-        .action-container {
             margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid #1e293b;
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 580px) {
             .result-wrapper {
-                padding: 25px 16px;
+                padding: 24px 16px;
                 margin: 25px auto;
             }
 
@@ -158,6 +353,11 @@
                 width: 100%;
                 margin: 6px 0;
                 box-sizing: border-box;
+            }
+
+            .rec-header {
+                flex-direction: column;
+                align-items: flex-start;
             }
         }
     </style>
@@ -170,127 +370,94 @@
         {% if result.decision == "approved" %}
 
             <div class="result-icon">✅</div>
-            <h1>Transaction Approved</h1>
-            <span class="status safe">Safe Transaction (&lt;35% Risk)</span>
-
-            <p class="message">
-                Our Random Forest fraud detection model classified this transaction
-                as low risk. You are authorized to proceed to secure checkout.
-            </p>
-
-            <div class="risk-score" style="color: #4ade80;">
-                {{ "%.2f"|format(result.risk_score) }}%
-            </div>
-            <p class="risk-score-label">Fraud Risk Score</p>
-
-            <div class="result-details">
-                <div class="detail-row">
-                    <span>Transaction Amount</span>
-                    <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Model Risk Score</span>
-                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Assessment</span>
-                    <strong style="color: #4ade80;">Approved (Safe)</strong>
-                </div>
+            <h1>Transaction Cleared</h1>
+            <div class="status-pill safe-pill">
+                <span>🛡️ Safe Transaction</span>
+                <small style="opacity: 0.85;">(&lt; 35% Risk)</small>
             </div>
 
-            <div class="action-container">
-                <a href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
-                   class="btn-primary">
-                    Continue to Payment →
-                </a>
-                <br>
-                <a href="{{ url_for('index') }}" class="btn-secondary">
-                    Back to Home
-                </a>
+            <div class="risk-gauge-container">
+                <div class="risk-score" style="color: #4ade80;">
+                    {{ "%.2f"|format(result.risk_score) }}%
+                </div>
+                <div class="risk-score-label">AI Fraud Risk Score</div>
             </div>
+
+            <!-- Recommended Action -->
+            {% if result.recommended_action %}
+            <div class="recommendation-card rec-safe">
+                <div class="rec-header">
+                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                    <span class="rec-badge badge-safe">{{ result.recommended_action.badge }}</span>
+                </div>
+                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
+            </div>
+            {% endif %}
 
         {% elif result.decision == "review" %}
 
             <div class="result-icon">⚠️</div>
             <h1>Transaction Under Review</h1>
-            <span class="status suspicious">Suspicious Transaction (35% - 70% Risk)</span>
-
-            <p class="message">
-                Our fraud detection model identified irregular transaction patterns.
-                Payment has been temporarily disabled pending manual verification.
-            </p>
-
-            <div class="risk-score" style="color: #fbbf24;">
-                {{ "%.2f"|format(result.risk_score) }}%
-            </div>
-            <p class="risk-score-label">Fraud Risk Score</p>
-
-            <div class="result-details">
-                <div class="detail-row">
-                    <span>Transaction Amount</span>
-                    <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Model Risk Score</span>
-                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Assessment</span>
-                    <strong style="color: #fbbf24;">Suspicious (Payment Disallowed)</strong>
-                </div>
+            <div class="status-pill suspicious-pill">
+                <span>⚠️ Suspicious Activity Detected</span>
+                <small style="opacity: 0.85;">(35% - 70% Risk)</small>
             </div>
 
-            <div class="action-container">
-                <a href="{{ url_for('index') }}" class="btn-secondary">
-                    ← Try Another Transaction
-                </a>
+            <div class="risk-gauge-container">
+                <div class="risk-score" style="color: #fbbf24;">
+                    {{ "%.2f"|format(result.risk_score) }}%
+                </div>
+                <div class="risk-score-label">AI Fraud Risk Score</div>
             </div>
+
+            <!-- Recommended Action -->
+            {% if result.recommended_action %}
+            <div class="recommendation-card rec-suspicious">
+                <div class="rec-header">
+                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                    <span class="rec-badge badge-suspicious">{{ result.recommended_action.badge }}</span>
+                </div>
+                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
+            </div>
+            {% endif %}
 
         {% elif result.decision == "blocked" %}
 
             <div class="result-icon">🚨</div>
-            <h1>Transaction Blocked</h1>
-            <span class="status danger">High Risk Transaction (≥70% Risk)</span>
-
-            <p class="message">
-                High-confidence fraud signals were detected. This transaction
-                has been strictly blocked to protect the account from financial loss.
-            </p>
-
-            <div class="risk-score" style="color: #fb7185;">
-                {{ "%.2f"|format(result.risk_score) }}%
-            </div>
-            <p class="risk-score-label">Fraud Risk Score</p>
-
-            <div class="result-details">
-                <div class="detail-row">
-                    <span>Transaction Amount</span>
-                    <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Model Risk Score</span>
-                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
-                </div>
-                <div class="detail-row">
-                    <span>Assessment</span>
-                    <strong style="color: #fb7185;">Blocked (High Risk)</strong>
-                </div>
+            <h1>Payment Blocked</h1>
+            <div class="status-pill danger-pill">
+                <span>🚨 High Risk Scam Profile</span>
+                <small style="opacity: 0.85;">(≥ 70% Risk)</small>
             </div>
 
-            <div class="action-container">
-                <a href="{{ url_for('index') }}" class="btn-secondary">
-                    ← Return to Home
-                </a>
+            <div class="risk-gauge-container">
+                <div class="risk-score" style="color: #fb7185;">
+                    {{ "%.2f"|format(result.risk_score) }}%
+                </div>
+                <div class="risk-score-label">AI Fraud Risk Score</div>
             </div>
+
+            <!-- Recommended Action -->
+            {% if result.recommended_action %}
+            <div class="recommendation-card rec-danger">
+                <div class="rec-header">
+                    <span class="rec-title">⚡ Operational Recommendation: {{ result.recommended_action.title }}</span>
+                    <span class="rec-badge badge-danger">{{ result.recommended_action.badge }}</span>
+                </div>
+                <p class="rec-guidance">{{ result.recommended_action.guidance }}</p>
+            </div>
+            {% endif %}
 
         {% elif result.decision == "completed" %}
 
             <div class="result-icon">🎉</div>
             <h1>Payment Successful</h1>
-            <span class="status safe">Payment Completed</span>
+            <div class="status-pill safe-pill">
+                <span>✅ Checkout Completed</span>
+            </div>
 
-            <p class="message">
-                Your payment has been successfully authorized and captured via PayPal Sandbox.
+            <p style="color: #cbd5e1; margin: 15px 0 25px; font-size: 15px;">
+                Your payment has been successfully authorized and securely captured via PayPal Sandbox.
             </p>
 
             <div class="result-details">
@@ -302,15 +469,15 @@
                 {% endif %}
                 <div class="detail-row">
                     <span>Payment Gateway</span>
-                    <strong>PayPal Sandbox</strong>
+                    <strong>PayPal Sandbox REST API</strong>
                 </div>
                 <div class="detail-row">
-                    <span>Status</span>
+                    <span>Payment Status</span>
                     <strong style="color: #4ade80;">COMPLETED</strong>
                 </div>
                 {% if result.capture_id %}
                 <div class="detail-row">
-                    <span>Capture ID</span>
+                    <span>PayPal Capture ID</span>
                     <strong>{{ result.capture_id }}</strong>
                 </div>
                 {% endif %}
@@ -326,7 +493,7 @@
 
             <div class="result-icon">ℹ️</div>
             <h1>{{ result.status or "Notice" }}</h1>
-            <p class="message">{{ result.message or "Unable to display transaction result." }}</p>
+            <p style="color: #cbd5e1; margin: 15px 0 25px;">{{ result.message or "Unable to process the requested assessment." }}</p>
 
             <div class="action-container">
                 <a href="{{ url_for('index') }}" class="btn-secondary">
@@ -336,9 +503,85 @@
 
         {% endif %}
 
+
+        <!-- Contextual Risk Factors & Explainability (Shown for Analyzed Transactions) -->
+        {% if result.risk_indicators %}
+
+            <!-- Explicit Distinction Notice -->
+            <div class="distinction-notice">
+                <strong>💡 Transparency & Explainability Note:</strong>
+                The <strong>AI Fraud Risk Score</strong> above is calculated by the <em>Random Forest Classifier</em> evaluating interactions across all 5 features. The <strong>Contextual Risk Indicators</strong> below represent observable transaction attributes evaluated against standard operational security rules to provide human-readable context.
+            </div>
+
+            <div class="section-subheading">
+                <span>🔍 Observable Risk Indicators (Rule-Based Analysis)</span>
+            </div>
+
+            <div class="indicators-grid">
+                {% for ind in result.risk_indicators %}
+                <div class="indicator-card level-{{ ind.level }}">
+                    <div class="indicator-icon">{{ ind.icon }}</div>
+                    <div class="indicator-content">
+                        <div class="indicator-top">
+                            <span class="indicator-category">{{ ind.category }}</span>
+                            <span class="indicator-metric-pill">{{ ind.metric }}</span>
+                        </div>
+                        <div class="indicator-title">{{ ind.title }}</div>
+                        <div class="indicator-desc">{{ ind.description }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Transaction Attributes Summary Table -->
+            <div class="result-details">
+                <div class="detail-row">
+                    <span>Submitted Amount</span>
+                    <strong>${{ "%.2f"|format(result.amount) }} USD</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Machine Learning Model</span>
+                    <strong>Random Forest (200 Trees, Stratified)</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Calculated Probability</span>
+                    <strong>{{ "%.2f"|format(result.risk_score) }}%</strong>
+                </div>
+                <div class="detail-row">
+                    <span>Gating Decision</span>
+                    {% if result.decision == "approved" %}
+                        <strong style="color: #4ade80;">APPROVED FOR CHECKOUT</strong>
+                    {% elif result.decision == "review" %}
+                        <strong style="color: #fbbf24;">HELD (PAYMENT DISALLOWED)</strong>
+                    {% else %}
+                        <strong style="color: #fb7185;">BLOCKED (PAYMENT PROHIBITED)</strong>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Action Controls (Strict Payment Gating) -->
+            <div class="action-container">
+                {% if result.decision == "approved" %}
+                    <a href="{{ url_for('payment', transaction_id=result.transaction_id) }}"
+                       class="btn-primary">
+                        Continue to PayPal Sandbox Checkout →
+                    </a>
+                    <br>
+                    <a href="{{ url_for('index') }}" class="btn-secondary">
+                        Back to Home
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('index') }}" class="btn-secondary">
+                        ← Try Another Transaction
+                    </a>
+                {% endif %}
+            </div>
+
+        {% endif %}
+
         {% if result.transaction_id %}
-            <p class="transaction-id">
-                Transaction ID: {{ result.transaction_id }}
+            <p class="transaction-id-tag">
+                Transaction Tracking ID: <code>{{ result.transaction_id }}</code>
             </p>
         {% endif %}
 

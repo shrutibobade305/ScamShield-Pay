@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +11,7 @@
 
     <script
         src="https://www.paypal.com/sdk/js?client-id={{ client_id|urlencode }}&amp;currency={{ currency }}&amp;intent=capture">
-    </script>
+        </script>
 
     <style>
         body {
@@ -161,9 +162,8 @@
             Transaction ID: {{ transaction_id }}
         </p>
 
-        <div id="paypal-button-container"
-             data-transaction-id="{{ transaction_id }}"
-             data-success-url="{{ url_for('payment_success') }}">
+        <div id="paypal-button-container" data-transaction-id="{{ transaction_id }}"
+            data-success-url="{{ url_for('payment_success') }}">
         </div>
 
         <div id="payment-message"></div>
@@ -298,4 +298,5 @@
     </script>
 
 </body>
+
 </html>
